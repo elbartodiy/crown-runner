@@ -698,10 +698,14 @@ const MUS_PAUSE_MUL=0.10;                // a pause takes it right down, but nev
    shift: the cut is where a new level starts, so the change of scene is not something the
    player has to watch being assembled. */
 let wipeT=0, wipeDir=0, wipeThen=null;
-function wipeTo(fn){ if(wipeDir>0) return; wipeDir=1; wipeThen=fn||null; }
+let wipeSecs=0.55;
+/* secs is per leg, so a value of 1.6 is 1.6 down and 1.6 back up. The lesson's hand-overs use
+   the default; the end of the shift asks for something much slower, because it is a change of
+   scene rather than a change of level. */
+function wipeTo(fn,secs){ if(wipeDir>0) return; wipeDir=1; wipeThen=fn||null; wipeSecs=secs||0.55; }
 function wipeTick(dt){
   if(!wipeDir) return;
-  wipeT=clamp(wipeT+wipeDir*dt/0.55,0,1);
+  wipeT=clamp(wipeT+wipeDir*dt/wipeSecs,0,1);
   if(wipeDir>0&&wipeT>=1){ wipeDir=-1; const f=wipeThen; wipeThen=null; if(f) f(); }
   else if(wipeDir<0&&wipeT<=0){ wipeDir=0; }
 }
@@ -1218,6 +1222,10 @@ function bestTarget(){
   return b;
 }
 function fire(){
+  /* Silently, not with NO CROWN ABOARD. During the scan drill the crown button is simply not
+     part of the game yet, and telling someone their magazine is empty is an answer to a
+     question they have not been taught to ask. */
+  if(drill()==='scan') return;
   if(!G.mag.length){ SFX.miss(); banner('NO CROWN ABOARD',CFG.col.dim); return; }
   const crown=G.mag.shift();
   objs.push({kind:'shot',crown,x:G.x,z:SHIP_Z+40,pz:SHIP_Z+40,r:30,spin:0,done:false});
@@ -1243,6 +1251,11 @@ function fireStock(kind){
 let scroll=0;
 function update(dt){
   T+=dt;
+  /* The shift is over and the picture is fading. Nothing may move, spawn, march or breach
+     behind the black — but the scene keeps being drawn, so what fades is the bore the player
+     was just looking at. Above camTick as well: a zoom easing under the fade would be a thing
+     happening in a scene that has ended. */
+  if(ending) return;
   /* Above every early return in this function. The lesson can hand the frame back
      to itself for a dozen reasons — a panel typing, a prop being resent, the
      intermission — and if the ease only ran on the paths that reach the bottom,
@@ -1395,7 +1408,12 @@ function update(dt){
         o.state='prepped'; o.crown=pick(stock());
         G.scans++; G.caseNo++; G.score+=CFG.score.scan*G.combo; G.designFlash=0.5;
         drillTick('scans');
-        SFX.scanned(); startMilling(o.crown);
+        SFX.scanned();
+        /* The scan drill does not run the mill. The player has not been shown it yet — the mill
+           plate comes after this drill — so a crown appearing in the magazine both gives away
+           the next lesson and hands them a button that is not the subject. Nothing to fire,
+           nothing to miss: the drill is one verb wide. */
+        if(drill()!=='scan') startMilling(o.crown);
         pops.push({x:o.x,col:o.crown.col,t:0,txt:o.crown.label.toUpperCase()+' '+o.crown.shade});
         G.target=null;
       }
@@ -1567,7 +1585,11 @@ function update(dt){
         /* Practice keeps the feedback and drops the bill: the combo breaks and the miss is
            heard, but no remake is spent and nobody joins the surgery list. A free round that
            still punished would not be a free round. */
-        if(practising()){
+        if(drill()==='scan'){
+          /* Nothing at all. On this drill a scanned tooth is a finished job — there is no mill
+             running and no crown to seat, so it flies on through. Breaking the combo here
+             punished the player for not doing the thing they had been told not to do yet. */
+        } else if(practising()){
           G.combo=1; G.warn=0.9; SFX.miss();
         } else {
         G.lost++; G.combo=1; G.remakes--; G.warn=1.2; shake=0.5;
@@ -4908,11 +4930,19 @@ function drawJim(){
   /* The line to the left of him, right-aligned into his shoulder, on paper like every other thing
      anybody says in this game. */
   const lw=Math.min(700,pixWidth(jim.line,genFor(18),2)+48);
-  const bx=x-lw-16, by=y+34;
+  /* Sat against the foot of the portrait, not its head. Pinned near the top the line floated
+     level with his hair, which read as a caption hung above him rather than as something he
+     was saying; down here it lands at his shoulder. Both edges are already multiples of the
+     block, so this stays on the grid. */
+  /* Lifted one block-multiple clear of the IMPLANT QUEUE caption, which is centred on VH-132 —
+     the same line the portrait's foot sits on. The portrait is far enough right to miss it; the
+     bubble runs left into the middle of the screen and landed straight across it. */
+  const BUBH=54, BUBLIFT=24;
+  const bx=x-lw-16, by=y+h-BUBH-BUBLIFT;
   ctx.globalAlpha=Math.min(1,jim.slide*1.4);
-  ctx.fillStyle='rgba(0,0,0,0.5)'; ctx.fillRect(bx+5,by+7,lw,54);
-  ctx.fillStyle=CFG.col.paper;     ctx.fillRect(bx,by,lw,54);
-  ctx.strokeStyle=CFG.col.ink; ctx.lineWidth=PIXEL_K; ctx.strokeRect(bx,by,lw,54);
+  ctx.fillStyle='rgba(0,0,0,0.5)'; ctx.fillRect(bx+5,by+7,lw,BUBH);
+  ctx.fillStyle=CFG.col.paper;     ctx.fillRect(bx,by,lw,BUBH);
+  ctx.strokeStyle=CFG.col.ink; ctx.lineWidth=PIXEL_K; ctx.strokeRect(bx,by,lw,BUBH);
   txt(fitPix(jim.line,lw-34,18,2),bx+17,by+36,
       {size:18,weight:800,col:CFG.col.ink,ls:'2px',font:F_MONO});
   ctx.globalAlpha=1;
@@ -5408,14 +5438,22 @@ const OUTRO=[
   {who:'jim',   lines:['SCAN. DESIGN. MILL. DELIVER.','ONE VISIT.','THAT IS  GLIDEWELL.IO']},
 ];
 let outro=null;
+/* Set while the shift fades out. The scene must keep being DRAWN — the fade is a fade of
+   something, not of a black rectangle — so mode stays PLAY and only the simulation stops.
+   update() checks this above everything else. */
+let ending=false;
 function endGame(){
+  if(ending||mode==='OUTRO') return;      // the fade can outlast whatever asked for it
   scanHumOn(false,0); SFX.over(); if(G) G.wave=0;
-  /* Every credit, not only the ones that ran the clock out. Now that the whistle hands over
-     to surgery, a credit almost always finishes there — by stock or by a breach — so gating the
-     closing line on the clock would have meant nobody ever heard it. It is the moment the
-     visitor steps away from the panel, which is exactly where the line belongs. */
-  mode='OUTRO'; outro={step:0,ch:0,hold:0.5}; idle=0; return;
-  finishRound();
+  /* Slowly, and through black. This used to switch to the closing scene on the frame the
+     last socket was filled: one instant you are operating, the next Jim is talking to you,
+     with nothing in between to say the day had ended. Three times the usual wipe, because
+     this is a change of scene rather than a change of level. */
+  ending=true;
+  wipeTo(()=>{
+    ending=false;
+    mode='OUTRO'; outro={step:0,ch:0,hold:0.5}; idle=0;
+  },1.6);
 }
 function finishRound(){
   if(lbQualifies(G.score)){ mode='ENTRY'; entry={pos:0,ch:[0,0,0],list:null,mine:-1}; }
