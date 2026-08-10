@@ -1450,12 +1450,27 @@ function update(dt){
       o.z+=(CFG.shotSpeed-G.speed*G.thrust)*dt; o.spin+=dt*9;
       // crossing test against every live target at this depth
       let consumed=false;
+      /* The nearest socket takes the shot, not the first one the array happens to offer.
+         The tolerance is ±84 against a spacing of 85, so two neighbours qualify for almost
+         every shot, and array order decided which — meaning a shot lined up dead centre was
+         routinely awarded to the socket next door. Measured, the window for hitting the one
+         you were aiming at came out at 16 world units against a socket drawn 113 wide, and
+         widening the tolerance made it worse rather than better, because it brought a third
+         neighbour into the running. Picking the nearest turns the tolerance into what it
+         always read as: aim at a socket, hit that socket. */
+      let near=null, nearD=Infinity;
+      for(const t of objs){
+        if(t===o||t.done||t.dead||t.kind!=='socket') continue;
+        const pr=t.pz-o.pz, rl=t.z-o.z;
+        if(!(pr>0&&rl<=0&&Math.abs(t.x-o.x)<t.r+o.r+CFG.surgery.hitPad)) continue;
+        if(t.row!==activeRow()||!t.need) continue;
+        const d=Math.abs(t.x-o.x);
+        if(d<nearD){ nearD=d; near=t; }
+      }
       for(const t of objs){
         if(t===o||t.done||t.dead) continue;
         if(t.kind==='socket'){
-          const prevRel=t.pz-o.pz, rel=t.z-o.z;
-          if(!(prevRel>0&&rel<=0&&Math.abs(t.x-o.x)<t.r+o.r+CFG.surgery.hitPad)) continue;
-          if(t.row!==activeRow()||!t.need) continue;   // the rank behind is shielded
+          if(t!==near) continue;
           if(t.need===o.ptype){
             if(o.ptype==='implant'){
               t.need='crown'; G.placed++;
@@ -5445,15 +5460,15 @@ let ending=false;
 function endGame(){
   if(ending||mode==='OUTRO') return;      // the fade can outlast whatever asked for it
   scanHumOn(false,0); SFX.over(); if(G) G.wave=0;
-  /* Slowly, and through black. This used to switch to the closing scene on the frame the
-     last socket was filled: one instant you are operating, the next Jim is talking to you,
-     with nothing in between to say the day had ended. Three times the usual wipe, because
-     this is a change of scene rather than a change of level. */
+  /* Through black rather than on the frame the last socket was filled — one instant you are
+     operating, the next Jim is talking to you, with nothing in between to say the day had
+     ended. Half a second each leg: a second for the whole handover, which is enough to read
+     as a change of scene and short enough not to feel like waiting. */
   ending=true;
   wipeTo(()=>{
     ending=false;
     mode='OUTRO'; outro={step:0,ch:0,hold:0.5}; idle=0;
-  },1.6);
+  },0.5);
 }
 function finishRound(){
   if(lbQualifies(G.score)){ mode='ENTRY'; entry={pos:0,ch:[0,0,0],list:null,mine:-1}; }
