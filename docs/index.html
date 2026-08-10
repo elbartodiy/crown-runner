@@ -943,8 +943,6 @@ function drawBursts(){
 
 function newGame(){
   objs.length=0; parts.length=0; pops.length=0; bursts.length=0;
-  dust.length=0;   // reset, or every replay stacks another cloud on the last
-  for(let i=0;i<70;i++) dust.push({a:rnd(0,6.2832),rr:rnd(0.15,1),z:rnd(SHIP_Z,FAR_Z)});
   G={ t:CFG.round, score:0, combo:1, level:1, caseNo:1, stamp:0,
       remakes:CFG.remakes, endedBy:'TIME', warn:0, ringFlash:0,
       stage:'RESTORE', implantQ:0, extracted:0, placed:0, inter:0, interText:null, wave:0,
@@ -1262,8 +1260,6 @@ function update(dt){
 
   const sp = mode==='PLAY' ? G.speed*G.thrust : CFG.speed.base*0.8;
   scroll+=sp*dt;
-  for(const d of dust){ d.z-=sp*dt*1.25;
-    if(d.z<NEAR_CULL){ d.z=FAR_Z; d.a=rnd(0,6.2832); d.rr=rnd(0.15,1); } }
   if(A.drone){ const tgt=mode==='PLAY'?0.055:0.02;
     A.drone.gain.value=lerp(A.drone.gain.value,tgt,dt*3);
     A.droneF.frequency.value=lerp(A.droneF.frequency.value,160+sp*0.34,dt*3); }
@@ -1887,17 +1883,11 @@ function drawBore(){
     return cg; });
   ctx.lineWidth=2;
   ctx.beginPath(); ctx.moveTo(cl.x,cl.y); ctx.lineTo(vp.x,vp.y); ctx.lineTo(cr.x,cr.y); ctx.stroke();
-  // Chalk dust off the cut, not a starfield. Short motion-blurred specks: round
-  // dots read as dead pixels, long lines read as warp speed. Neither is dust.
-  ctx.lineCap='round';
-  for(const d of dust){
-    const wx=Math.cos(d.a)*BORE_R*d.rr, wy=Math.sin(d.a)*BORE_R*d.rr;
-    const a=proj(wx,wy,d.z), b=proj(wx,wy,d.z+34);
-    ctx.strokeStyle=`rgba(255,255,255,${(clamp(1-d.z/FAR_Z,0,1)*0.5).toFixed(3)})`;
-    ctx.lineWidth=clamp(2.2*a.s,0.6,4);
-    ctx.beginPath(); ctx.moveTo(b.x,b.y); ctx.lineTo(a.x,a.y); ctx.stroke();
-  }
-  ctx.lineCap='butt';
+  /* The flying motes are gone. They were meant as chalk dust off the cut, but at any real
+     speed they projected into streaks pointing straight at the camera, and a field of white
+     lines converging on the viewer is the one thing on the glass that competes with the
+     teeth — the teeth being the only thing anybody is supposed to be looking at. Speed is
+     already carried by the bore's own rings scrolling past. */
 }
 
 /* The implant line. Fixed distance, so it is a constant ring in the bore: outside
@@ -2220,6 +2210,19 @@ function drawSocket(o){
   const R=o.r*p.s, act=o.row===activeRow();
   ctx.save();
   ctx.globalAlpha=clamp((1-o.z/FAR_Z)*1.7,0,1)*(act?1:0.42);
+  /* Light coming off the socket rather than a ring drawn round it. Underneath the body, so it
+     reads as the thing glowing instead of as a marker sitting on top of it, and coloured by
+     what the socket still wants — so "which rank" and "which part" are one signal. Shallow on
+     purpose: ten of these breathing in step should register at the edge of the eye, not
+     compete with the parts in flight. */
+  if(act){
+    const need=o.need==='implant'?CFG.surgery.implant:CFG.surgery.crown;
+    /* One clock for the whole rank, not each socket's own phase. Ten lights breathing out of
+       step read as ten separate things blinking; in step they read as one row saying "here".
+       o.pulse is seeded at random and is not advanced for sockets anyway. */
+    const pl=0.5+0.5*Math.sin(T*3.0);
+    glow(p.x,p.y,R*2.3,need.col,(0.10+0.13*pl)*ctx.globalAlpha);
+  }
   withT(ctx,p.x,p.y,R,0,()=>{
     socketPath(ctx);
     const g=ctx.createLinearGradient(0,-1,0,1);
@@ -2236,12 +2239,10 @@ function drawSocket(o){
       ctx.restore();
     }
   });
-  if(act){
-    const need=o.need==='implant'?CFG.surgery.implant:CFG.surgery.crown;
-    const pl=0.5+0.5*Math.sin(o.pulse);
-    ctx.globalAlpha*=0.35+0.45*pl;
-    pixRing(p.x,p.y,R*1.4,PIXEL_K,need.col,0,0,0);
-  }
+  /* No ring around the socket. Ten of them pulsing at once read as ten targets to deal with
+     rather than as a row that is ready, and the thing they were marking is already said twice
+     over: the near rank is drawn at full strength while the far one sits at 0.42, and a socket
+     that still wants its fixture is visibly empty. */
   ctx.restore();
 }
 
