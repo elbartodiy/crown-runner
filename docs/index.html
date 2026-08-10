@@ -981,8 +981,42 @@ const implanting=()=>G&&G.stage==='IMPLANT';
    second, and dropping the flag early would pop the implant line back into a frame the
    player can still see. It clears when newGame() builds the shift. */
 const practising=()=>!!(G&&G.practice);
-const PRACTICE_NEED=3;      // three finished cases: enough to have done it, not a shift
-const PRACTICE_OUT=1.7;     // and a beat to register the last one before the cut
+const drill=()=>G&&G.practice?G.practice.id:null;
+const PRACTICE_OUT=1.7;     // a beat to register the last case before the cut
+
+/* Three drills, each between the plates that teach it, and each one verb wide. A lesson that
+   explains all three and then asks for all three at once is a lesson the player fails at the
+   first one and never finds out which. So: learn the scan, do three scans; learn the mill and
+   the crown, do three seats with the scanning already done for you; then do the whole case.
+   None of them has the implant line — that arrives with the shift, as a complication. */
+const DRILLS={
+  scan:{need:3, head:'SCAN DRILL',  count:'scans',
+        hint:'HOLD  {SCAN}  ON  EVERY  CRACKED  TOOTH',
+        banner:'SCAN ONLY  ·  NOTHING IS TIMED', next:'tutor'},
+  seat:{need:3, head:'SEAT DRILL',  count:'seats',
+        hint:'THESE ARE ALREADY SCANNED  ·  PRESS  {FIRE}',
+        banner:'SEAT ONLY  ·  CROWNS ARE READY',   next:'full'},
+  full:{need:3, head:'FULL CASE',   count:'seats',
+        hint:'SCAN  ·  MILL  ·  SEAT',
+        banner:'NOW THE WHOLE CASE',                next:'tutor'},
+};
+/* Which plate to come back to after a drill. Module scope on purpose: every drill starts with
+   newGame(), which builds a fresh G, so anything parked on G would not survive the trip. */
+let tutResumeStep=0;
+/* Called wherever a countable thing happens. Each drill names the one it counts, so a scan
+   during the seat drill — there are none, but still — cannot advance it. */
+function drillTick(what){
+  if(!practising()) return;
+  const P=G.practice, D=DRILLS[P.id];
+  if(D.count!==what || P.over>0) return;
+  P.done++;
+  if(P.done>=P.need){
+    P.over=PRACTICE_OUT;
+    banner(D.next==='tutor'?'GOOD  ·  CARRY ON':'GOOD  ·  NEXT',CFG.col.score);
+  } else {
+    banner(P.done+'  /  '+P.need,CFG.col.score);
+  }
+}
 const stock=()=>implanting()?CFG.implants:CFG.crowns;
 /* How far a cracked tooth has come through the work zone: 0 at the far edge,
    1 at the point of no return. Drives the visible decay. */
@@ -1007,6 +1041,13 @@ function freeX(z,gap){
 }
 function spawnTooth(){
   const x=freeX(FAR_Z,170); if(x===null) return;
+  /* The seat drill hands them over already opened: the scanning is the previous drill's
+     subject, and asking for it again here would make this drill about two things. */
+  if(drill()==='seat'){
+    objs.push({kind:'tooth',state:'prepped',crown:pick(stock()),x,z:FAR_Z,pz:FAR_Z,
+               r:44,scan:1,pulse:rnd(0,6.28),done:false,flake:0});
+    return;
+  }
   objs.push({kind:'tooth',state:'broken',crown:null,x,z:FAR_Z,pz:FAR_Z,
              r:44,scan:0,pulse:rnd(0,6.28),done:false,
              chip:[rnd(0,6.28),rnd(0,6.28),rnd(0,6.28),rnd(0,6.28)],flake:0});
@@ -1357,6 +1398,7 @@ function update(dt){
       if(o.scan>=1){
         o.state='prepped'; o.crown=pick(stock());
         G.scans++; G.caseNo++; G.score+=CFG.score.scan*G.combo; G.designFlash=0.5;
+        drillTick('scans');
         SFX.scanned(); startMilling(o.crown);
         pops.push({x:o.x,col:o.crown.col,t:0,txt:o.crown.label.toUpperCase()+' '+o.crown.shade});
         G.target=null;
@@ -1374,6 +1416,10 @@ function update(dt){
       if(G.mag.length<CFG.magMax){ G.mag.push(m.crown); SFX.dock(); flash(m.crown.col); }
     }
   }
+
+  /* The seat drill supplies the crowns, because the thing it is about is the button, not the
+     stock. Topped up rather than pre-filled: three cases can outlast one magazine. */
+  if(drill()==='seat'&&!G.mag.length&&!G.mill.length) G.mag.push(pick(stock()));
 
   if(Input.fireEdge) fire();
   }   // end of the stage-one pipeline
@@ -1437,15 +1483,7 @@ function update(dt){
             G.combo=Math.min(CFG.score.comboCap,G.combo+1); G.stamp=0.6;
             /* The free round is counted in finished cases, not in seconds. Nobody should be
                moved on by a clock they were told to ignore. */
-            if(practising()&&G.practice.over<=0){
-              G.practice.done++;
-              if(G.practice.done>=G.practice.need){
-                G.practice.over=PRACTICE_OUT;
-                banner('THAT IS THE JOB  ·  NOW THE SHIFT',CFG.col.score);
-              } else {
-                banner(G.practice.done+'  /  '+G.practice.need,CFG.col.score);
-              }
-            }
+            drillTick('seats');
             match?SFX.match():SFX.seat(); flash(o.crown.col);
             if(o.crown.fixture) G.placed++;
             pops.push({x:t.x,col:match?CFG.col.score:o.crown.col,t:0,
@@ -1559,7 +1597,9 @@ function update(dt){
 
   if(G.practice&&G.practice.over>0){
     G.practice.over-=dt;
-    if(G.practice.over<=0&&!G.practice.leaving){ G.practice.leaving=true; wipeTo(startShift); }
+    if(G.practice.over<=0&&!G.practice.leaving){
+      const id=G.practice.id; G.practice.leaving=true; wipeTo(()=>afterDrill(id));
+    }
   }
   G.stamp=Math.max(0,G.stamp-dt);
   G.queuePop=Math.max(0,G.queuePop-dt);
@@ -3036,7 +3076,7 @@ function drawSlip(){
      moves would be the one lie on an otherwise honest form. The same two rows report what
      the round is actually counting: finished cases. */
   const prac=practising();
-  field(prac?'PRACTICE':'CLINIC DAY',244);
+  field(prac?DRILLS[G.practice.id].head:'CLINIC DAY',244);
   meter(252,18, prac?clamp(G.practice.done/G.practice.need,0,1):1-G.t/CFG.round,
         (!prac&&low)?(Math.sin(T*14)>0?R.red:'rgba(235,0,69,0.3)'):'rgba(30,30,30,0.72)');
   txt(prac?(G.practice.done+' / '+G.practice.need):shiftTime(),S.x+18,316,
@@ -3746,7 +3786,7 @@ const TUTOR=[
   text:['THIS TOOTH IS CRACKED.','HOLD  {SCAN}  TO SCAN IT.'],
   tooth:true, hold:'HOLD  {SCAN}  ON THE CRACKED TOOTH',
   at:()=>{const t=tutTooth(); return t&&t.state==='broken'&&t.z<scanFar();},
-  done:()=>G.scans>0, diagram:'scan'},
+  done:()=>G.scans>0, diagram:'scan', drillAfter:'scan'},
  /* One beat, not two. The file and the cut were separate screens saying consecutive halves of
     the same sentence, and the lesson is meant to be short — so the ones and zeros are now the
     first second of the mill plate rather than a stop of their own. Straight on from the scan,
@@ -3761,7 +3801,7 @@ const TUTOR=[
     until it has been given. */
  {tgt:'seated',
   text:['NOW SEAT IT.','PRESS  {FIRE}.'],
-  at:()=>true, done:()=>true, diagram:'seat', verb:'fire'},
+  at:()=>true, done:()=>true, diagram:'seat', verb:'fire', drillAfter:'seat'},
  /* The implant line and the moisture used to be taught here, and they were the two beats that
     broke the sequence: both are about the bore, so both dropped the plate and threw the player
     back into the tunnel in the middle of a lesson that had just spent four screens staying out
@@ -3853,17 +3893,39 @@ function enterPlay(){
 /* The lesson hands over to a free round, not to the shift. Three verbs learned one at a
    time behind panels do not yet add up to the job: this is where they run together, in the
    bore, at the player's own pace. */
-function startPractice(){
+function startDrill(id){
+  const D=DRILLS[id];
   camReset();                      // nothing past the lesson is played zoomed
-  G.tut=null;
   newGame();                       // a clean bore, with nothing carried over
-  G.practice={need:PRACTICE_NEED, done:0, over:0, leaving:false};
+  G.tut=null;
+  G.practice={id, need:D.need, done:0, over:0, leaving:false};
   /* Faster than the lesson's 45%, slower than the opening of a shift. The point is that
      there is time to look at a tooth before deciding, not that nothing moves. */
   G.speed=CFG.speed.base*0.58;
   G.spawnIn=1.2;
-  banner('PRACTICE  ·  NOTHING IS TIMED',CFG.col.score);
-  hint('SCAN  ·  MILL  ·  SEAT  —  '+PRACTICE_NEED+'  CASES',4.5);
+  banner(D.banner,CFG.col.score);
+  /* hint() does not substitute — every caller does its own, and the brace is not in the face,
+     so an unsubstituted {FIRE} draws as ?FIRE? rather than as the letter on the cap. */
+  hint(btnSub(D.hint),4.5);
+}
+/* A drill is over. Either the next drill follows straight on, or the lesson picks up at the
+   plate after the one that sent us here. */
+function afterDrill(id){
+  const nx=DRILLS[id].next;
+  if(nx==='tutor') resumeTutor();
+  else startDrill(nx);
+}
+function resumeTutor(){
+  camReset();
+  newGame();
+  G.tut={on:true, step:tutResumeStep, paused:false, seen:false, hlT:0, ch:0, rch:0, cool:0.6};
+  G.speed=CFG.speed.base*0.45;
+  const st=TUTOR[tutResumeStep];
+  /* Only the beats that talk about something in the bore need a prop sent. The mill, the seat
+     and the send-off all play on their own plate, and spawning a tooth under them just puts
+     something wandering about behind the panel. */
+  if(st&&st.tgt==='tooth') tutSendTooth();
+  if(st&&st.enter) st.enter();
 }
 function startShift(){
   camReset();
@@ -3942,7 +4004,7 @@ function tutorTick(dt){
         /* Dismissing the panel does not finish the beat — it hands the controls back so
            the beat can be practised. The step only moves on once done() says the verb
            happened. */
-        if(st.finale){ U.leaving=true; wipeTo(startPractice); SFX.ui(); return true; }
+        if(st.finale){ U.leaving=true; wipeTo(startShift); SFX.ui(); return true; }
         U.paused=false; U.doing=true; U.cool=TUT_GAP(); U.wait=0;
       }
       SFX.ui();
@@ -4007,9 +4069,17 @@ function tutorTick(dt){
       if(U.wait>18&&!tutBusy()){ U.wait=0; }        // fall through and move on
       else return false;
     }
-    U.doing=false; U.step++; U.ch=0; U.rch=0; U.wait=0; U.cool=TUT_GAP();
+    U.doing=false;
+    /* The beat is finished and it owes a drill: park the plate we would have gone to next and
+       hand the bore over. resumeTutor() picks it up from there when the drill is done. */
+    if(st&&st.drillAfter){
+      tutResumeStep=U.step+1; U.leaving=true;
+      wipeTo(()=>startDrill(st.drillAfter));
+      return true;
+    }
+    U.step++; U.ch=0; U.rch=0; U.wait=0; U.cool=TUT_GAP();
     U.seen=false;
-    if(U.step>=TUTOR.length){ startPractice(); return true; }
+    if(U.step>=TUTOR.length){ startShift(); return true; }
     const nx=TUTOR[U.step]; if(nx.enter) nx.enter();
     return false;
   }
@@ -4032,9 +4102,15 @@ function tutorTick(dt){
   if(st&&st.hold&&!U.paused&&U.wait>TUTOR_GAP+0.9&&G.hintT<=1.0) hint(st.hold,1.4);
   if(st&&st.enter&&st.tgt&&!tutObj(st.tgt)) st.enter();
   if(U.wait>13&&!tutBusy()){
+    // the same escape hatch as above: a stalled beat still owes its drill
+    if(st&&st.drillAfter){
+      tutResumeStep=U.step+1; U.leaving=true;
+      wipeTo(()=>startDrill(st.drillAfter));
+      return true;
+    }
     U.step++; U.ch=0; U.rch=0; U.wait=0; U.cool=0.6;
     U.seen=false;
-    if(U.step>=TUTOR.length){ startPractice(); return true; }
+    if(U.step>=TUTOR.length){ startShift(); return true; }
     const nx=TUTOR[U.step]; if(nx.enter) nx.enter();
     return false;
   }
