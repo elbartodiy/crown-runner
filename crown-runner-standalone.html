@@ -1041,8 +1041,21 @@ function freeX(z,gap){
   }
   return null;
 }
+/* Three standing lanes for the drills, and never the same one twice running. Left to itself
+   the spawner picks a uniform random x, which on a drill sending one tooth at a time means two
+   and three in a row can arrive within a few units of each other — and a player who never has
+   to move never learns that they can. Rotating the lane makes steering part of every rep
+   without making it a separate lesson. The shift keeps the random spread: by then the bore is
+   busy enough that position takes care of itself. */
+const DRILL_LANES=[-150,0,150];
+let lastLane=-1;
+function drillLane(){
+  let i; do{ i=(Math.random()*DRILL_LANES.length)|0; }while(i===lastLane);
+  lastLane=i; return DRILL_LANES[i];
+}
 function spawnTooth(){
-  const x=freeX(FAR_Z,170); if(x===null) return;
+  const x=practising()?drillLane():freeX(FAR_Z,170);
+  if(x===null) return;
   /* The seat drill hands them over already opened: the scanning is the previous drill's
      subject, and asking for it again here would make this drill about two things. */
   if(drill()==='seat'){
