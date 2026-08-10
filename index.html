@@ -971,6 +971,18 @@ function scrParts(worldX,col,n,spd){
 const tier=()=>CFG.scanner[G.tier];
 /* One switch decides what the bore sends and what the mill cuts. */
 const implanting=()=>G&&G.stage==='IMPLANT';
+/* The free round between the lesson and the shift. The lesson teaches the three verbs one
+   at a time behind a panel; this is the first time all three run together in the bore, and
+   the one thing it takes away is the implant line. Watching a tooth come apart teaches
+   nothing while you are still working out which one to point at — so here nothing is lost,
+   nothing is timed, and a cracked tooth stays scannable the whole way in. The line, and the
+   reason it exists, are met in the shift, by which point the loop is already in the hands. */
+/* Deliberately still true while the round is handing over: the fade to black takes half a
+   second, and dropping the flag early would pop the implant line back into a frame the
+   player can still see. It clears when newGame() builds the shift. */
+const practising=()=>!!(G&&G.practice);
+const PRACTICE_NEED=3;      // three finished cases: enough to have done it, not a shift
+const PRACTICE_OUT=1.7;     // and a beat to register the last one before the cut
 const stock=()=>implanting()?CFG.implants:CFG.crowns;
 /* How far a cracked tooth has come through the work zone: 0 at the far edge,
    1 at the point of no return. Drives the visible decay. */
@@ -1159,7 +1171,8 @@ function bestTarget(){
   let b=null;
   for(const o of objs){
     if(o.kind!=='tooth'||o.state!=='broken'||o.done) continue;
-    if(o.z<scanNear()||o.z>scanFar()) continue;
+    // no line in practice, so the case never closes on distance — scan it right up to the wand
+    if(o.z<(practising()?NEAR_CULL:scanNear())||o.z>scanFar()) continue;
     if(Math.abs(o.x-G.x)>tier().align) continue;
     if(!b||o.z<b.z) b=o;
   }
@@ -1255,7 +1268,7 @@ function update(dt){
      second stage is a set piece and ends on its own terms: out of crowns, out of remakes,
      or a rank reaching the wand. It stays bounded because each wave issues one part fewer
      than the last (surgery.ammoStep is -1), so the stock runs out on its own. */
-  if(!(G.tut&&G.tut.on)&&!implanting()){
+  if(!(G.tut&&G.tut.on)&&!implanting()&&!practising()){
     G.t-=dt;
     if(G.t<=0){
       G.t=0;
@@ -1269,7 +1282,7 @@ function update(dt){
     }
   }
   G.level=1+Math.floor((CFG.round-G.t)/CFG.levelSec);
-  if(!(G.tut&&G.tut.on))
+  if(!(G.tut&&G.tut.on)&&!practising())
     G.speed=Math.min(CFG.speed.max,CFG.speed.base+(G.level-1)*CFG.speed.perLevel);
 
   /* Slowing is the strategic resource: it buys time to line up a scan or a
@@ -1422,6 +1435,17 @@ function update(dt){
             if(match){ gain+=CFG.score.match*G.combo; G.matches++; }
             G.score+=gain; G.seats++;
             G.combo=Math.min(CFG.score.comboCap,G.combo+1); G.stamp=0.6;
+            /* The free round is counted in finished cases, not in seconds. Nobody should be
+               moved on by a clock they were told to ignore. */
+            if(practising()&&G.practice.over<=0){
+              G.practice.done++;
+              if(G.practice.done>=G.practice.need){
+                G.practice.over=PRACTICE_OUT;
+                banner('THAT IS THE JOB  ·  NOW THE SHIFT',CFG.col.score);
+              } else {
+                banner(G.practice.done+'  /  '+G.practice.need,CFG.col.score);
+              }
+            }
             match?SFX.match():SFX.seat(); flash(o.crown.col);
             if(o.crown.fixture) G.placed++;
             pops.push({x:t.x,col:match?CFG.col.score:o.crown.col,t:0,
@@ -1466,7 +1490,7 @@ function update(dt){
     if(o.pulse!==undefined) o.pulse+=dt*4;
 
     // cracked and unscanned: it never reaches the wand, it comes apart on the line
-    if(o.kind==='tooth'&&o.state==='broken'&&o.z<=scanNear()){
+    if(o.kind==='tooth'&&o.state==='broken'&&o.z<=scanNear()&&!practising()){
       beginCollapse(o); continue;
     }
     if(!o.done&&o.pz>SHIP_Z&&o.z<=SHIP_Z){
@@ -1506,6 +1530,12 @@ function update(dt){
            path counted before, which meant scanning a tooth and then missing it quietly removed
            it from the day's work — the one case where doing more got you less. The remake still
            stands: that is the cost of opening a case you could not close. */
+        /* Practice keeps the feedback and drops the bill: the combo breaks and the miss is
+           heard, but no remake is spent and nobody joins the surgery list. A free round that
+           still punished would not be a free round. */
+        if(practising()){
+          G.combo=1; G.warn=0.9; SFX.miss();
+        } else {
         G.lost++; G.combo=1; G.remakes--; G.warn=1.2; shake=0.5;
         if(!(G.tut&&G.tut.on)){ G.extracted++; G.implantQ++; G.queuePop=1.0; }
         SFX.miss(); flash(CFG.col.bad);
@@ -1520,12 +1550,17 @@ function update(dt){
           stopLine(); return;
         }
         banner('CASE LOST  ·  '+G.remakes+' REMAKE'+(G.remakes===1?'':'S')+' LEFT',CFG.col.bad);
+        }
       }
     }
     if(o.z<NEAR_CULL) o.dead=true;
   }
   for(let i=objs.length-1;i>=0;i--) if(objs[i].dead) objs.splice(i,1);
 
+  if(G.practice&&G.practice.over>0){
+    G.practice.over-=dt;
+    if(G.practice.over<=0&&!G.practice.leaving){ G.practice.leaving=true; wipeTo(startShift); }
+  }
   G.stamp=Math.max(0,G.stamp-dt);
   G.queuePop=Math.max(0,G.queuePop-dt);
   G.warn=Math.max(0,G.warn-dt);
@@ -1949,7 +1984,7 @@ function drawTooth(o){
       if(dec>0.35){ ctx.globalAlpha=dec*0.5;
         ctx.fillStyle='#C0B29A'; cavityPath(ctx); ctx.fill(); ctx.globalAlpha=1; }
     });
-    const live=mode==='PLAY'&&o.z>scanNear()&&o.z<scanFar();
+    const live=mode==='PLAY'&&o.z>(practising()?NEAR_CULL:scanNear())&&o.z<scanFar();
     if(live){
       const pl=0.5+0.5*Math.sin(o.pulse);
       ctx.strokeStyle=`rgba(255,204,51,${(0.22+0.30*pl).toFixed(2)})`;
@@ -2026,7 +2061,7 @@ function drawTooth(o){
                   col:'#6E6656',sz:rnd(2,5)});
     }
     // in-range bracket, and the closing scan ring while the button is held
-    const live=mode==='PLAY'&&o.z>scanNear()&&o.z<scanFar();
+    const live=mode==='PLAY'&&o.z>(practising()?NEAR_CULL:scanNear())&&o.z<scanFar();
     if(live){
       const pl=0.5+0.5*Math.sin(o.pulse);
       ctx.strokeStyle=`rgba(255,204,51,${(0.22+0.30*pl).toFixed(2)})`;
@@ -2507,7 +2542,7 @@ function drawWorld(){
   drawBackground();                    // the room stays put; only the bore is magnified
   const zoomed=camPush();
   drawBore();
-  if(mode==='PLAY'){ if(!implanting()) drawNoReturn(); drawAimLine(); }
+  if(mode==='PLAY'){ if(!implanting()&&!practising()) drawNoReturn(); drawAimLine(); }
   const list=objs.filter(o=>o&&!o.dead).sort((a,b)=>b.z-a.z);
   for(const o of list){
     if(o.kind==='tooth') drawTooth(o);
@@ -2952,11 +2987,14 @@ function drawSlip(){
   gwLogo(S.x+38,S.y+32,18);
   txt('LAB CASE SLIP',S.x+72,S.y+42,{size:20,weight:800,col:'#FFFFFF',ls:'3px',font:F_MONO});
   const imp=implanting();
-  txt(imp?'STAGE 2':'STAGE 1',S.x+20,S.y+80,
+  txt(imp?'STAGE 2':(practising()?'TRAINING':'STAGE 1'),S.x+20,S.y+80,
       {size:13,weight:700,col:'rgba(255,255,255,0.85)',ls:'2px',font:F_MONO});
   if(imp){
     txt(liveSockets(0)+liveSockets(1)+' LEFT',S.x+S.w-20,S.y+80,
         {size:14,weight:800,col:'#FFFFFF',align:'right',ls:'2px',font:F_MONO});
+  } else if(practising()){
+    /* No surgery counter in the free round. A backlog that cannot fill is a threat the
+       round does not actually carry, and reading 0/10 all the way through taught nothing. */
   } else {
     /* Every tooth let go shows up here as a fixture waiting to be placed, so the
        queue is a picture of the backlog and not just a number. */
@@ -2994,10 +3032,15 @@ function drawSlip(){
   const low=G.t<12;
   /* Just the label. 'CASE 0001' next to it overran by 46px, and '#' is not in the face, so
      it drew as a question mark — and the case number was decoration in the first place. */
-  field('CLINIC DAY',244);
-  meter(252,18,1-G.t/CFG.round, low?(Math.sin(T*14)>0?R.red:'rgba(235,0,69,0.3)'):'rgba(30,30,30,0.72)');
-  txt(shiftTime(),S.x+18,316,
-      {size:32,weight:800,col:low?R.red:R.ink,font:F_MONO});
+  /* In the free round the clock is stopped, so printing an hour beside a bar that never
+     moves would be the one lie on an otherwise honest form. The same two rows report what
+     the round is actually counting: finished cases. */
+  const prac=practising();
+  field(prac?'PRACTICE':'CLINIC DAY',244);
+  meter(252,18, prac?clamp(G.practice.done/G.practice.need,0,1):1-G.t/CFG.round,
+        (!prac&&low)?(Math.sin(T*14)>0?R.red:'rgba(235,0,69,0.3)'):'rgba(30,30,30,0.72)');
+  txt(prac?(G.practice.done+' / '+G.practice.need):shiftTime(),S.x+18,316,
+      {size:32,weight:800,col:(!prac&&low)?R.red:R.ink,font:F_MONO});
   /* Only the surgery marker shares this row. The day's range used to sit here and ran into the
      clock at any reading wider than 8:00 AM — and it was redundant anyway, with CLINIC DAY
      above it and the hour beside it. */
@@ -3267,15 +3310,18 @@ function drawControlStrip(){
   for(const k of keys) x+=ctrlEntry(x,y,k[0],k[1],k[2],r,lsz)+34;
 }
 function drawPlayHUD(){
-  if(!implanting()) drawNoReturnLabel();   // type for the ring drawn back in the world
+  if(!implanting()&&!practising()) drawNoReturnLabel();   // type for the ring drawn back in the world
   drawJim();                      // under the slip and the queue, over the bore
   drawSlip();
-  if(!implanting()) drawImplantQueue();
+  if(!implanting()&&!practising()) drawImplantQueue();
   /* No button legend during a shift: it is on the attract screen and in the taught
      pre-level, and over the bore it was just clutter in the way of the game. */
   if(G.tut&&G.tut.on) drawTutor();
-  txt('LEVEL '+G.level,VW-46,64,
-      {size:20,weight:700,col:'rgba(138,131,119,0.8)',align:'right',ls:'5px',font:F_MONO});
+  /* The free round has no levels: its speed is fixed and its clock is stopped, so the
+     number would sit on 1 for the whole thing and mean nothing. */
+  if(!practising())
+    txt('LEVEL '+G.level,VW-46,64,
+        {size:20,weight:700,col:'rgba(138,131,119,0.8)',align:'right',ls:'5px',font:F_MONO});
   if(G.hintT>0){
     /* Top band, not the floor. Down there it ran through the implant queue, the
        figures and whatever was falling; up here the only other thing is the LEVEL
@@ -3804,11 +3850,34 @@ function enterPlay(){
   tutSendTooth();
   if(TUTOR[0].enter) TUTOR[0].enter();
 }
-function endTutor(){
-  camReset();                      // the shift proper is never played zoomed
+/* The lesson hands over to a free round, not to the shift. Three verbs learned one at a
+   time behind panels do not yet add up to the job: this is where they run together, in the
+   bore, at the player's own pace. */
+function startPractice(){
+  camReset();                      // nothing past the lesson is played zoomed
+  G.tut=null;
+  newGame();                       // a clean bore, with nothing carried over
+  G.practice={need:PRACTICE_NEED, done:0, over:0, leaving:false};
+  /* Faster than the lesson's 45%, slower than the opening of a shift. The point is that
+     there is time to look at a tooth before deciding, not that nothing moves. */
+  G.speed=CFG.speed.base*0.58;
+  G.spawnIn=1.2;
+  banner('PRACTICE  ·  NOTHING IS TIMED',CFG.col.score);
+  hint('SCAN  ·  MILL  ·  SEAT  —  '+PRACTICE_NEED+'  CASES',4.5);
+}
+function startShift(){
+  camReset();
   G.tut=null; taught=true;
   newGame();                       // a clean shift, with nothing carried over
+  /* The line is the shift's first new rule, so it is named on arrival rather than
+     discovered by losing a tooth to it. It was present from the first frame before the
+     free round existed; now it is a complication, and complications get announced. */
+  banner('THE SHIFT  ·  MIND THE LINE',CFG.col.red);
+  /* The instruction, not a second copy of the banner. The ring carries its own caption —
+     IMPLANT LINE / NO CROWN BEYOND THIS POINT — so a third sentence about the line meant
+     three messages saying one thing in three voices, stacked on top of each other. */
   hint('SCAN THE CRACKED TEETH',3);
+  G.ringFlash=0.9;                 // and the line itself flares, which is what to look at
 }
 /* Returns true while the pre-level owns the frame, so update() stops there. */
 function tutorTick(dt){
@@ -3835,7 +3904,8 @@ function tutorTick(dt){
      panel on screen, which is where anyone who wants out will be. */
   if(Input.scan&&Input.fire&&Input.slow){
     U.skip=(U.skip||0)+dt;
-    if(U.skip>=TUTOR_SKIP){ SFX.ui(); endTutor(); return true; }
+    // holding all three skips the free round as well: whoever does this already knows the game
+    if(U.skip>=TUTOR_SKIP){ SFX.ui(); startShift(); return true; }
   } else U.skip=0;
   if(U.paused){
     if(U.hlT>0){ U.hlT-=dt; return true; }     // the element gets its second alone
@@ -3872,7 +3942,7 @@ function tutorTick(dt){
         /* Dismissing the panel does not finish the beat — it hands the controls back so
            the beat can be practised. The step only moves on once done() says the verb
            happened. */
-        if(st.finale){ U.leaving=true; wipeTo(endTutor); SFX.ui(); return true; }
+        if(st.finale){ U.leaving=true; wipeTo(startPractice); SFX.ui(); return true; }
         U.paused=false; U.doing=true; U.cool=TUT_GAP(); U.wait=0;
       }
       SFX.ui();
@@ -3939,7 +4009,7 @@ function tutorTick(dt){
     }
     U.doing=false; U.step++; U.ch=0; U.rch=0; U.wait=0; U.cool=TUT_GAP();
     U.seen=false;
-    if(U.step>=TUTOR.length){ endTutor(); return true; }
+    if(U.step>=TUTOR.length){ startPractice(); return true; }
     const nx=TUTOR[U.step]; if(nx.enter) nx.enter();
     return false;
   }
@@ -3964,7 +4034,7 @@ function tutorTick(dt){
   if(U.wait>13&&!tutBusy()){
     U.step++; U.ch=0; U.rch=0; U.wait=0; U.cool=0.6;
     U.seen=false;
-    if(U.step>=TUTOR.length){ endTutor(); return true; }
+    if(U.step>=TUTOR.length){ startPractice(); return true; }
     const nx=TUTOR[U.step]; if(nx.enter) nx.enter();
     return false;
   }
