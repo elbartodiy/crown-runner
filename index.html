@@ -1398,8 +1398,19 @@ function update(dt){
      steady timer is disarmed entirely: the ONLY way a drill tooth spawns is the bore going
      empty, and then it comes at once. */
   if(practising()){
-    const liveTooth=objs.some(o=>o.kind==='tooth'&&!o.dead&&!o.done);
-    G.spawnIn = (!liveTooth&&G.practice.over<=0) ? Math.min(G.spawnIn,0.2) : 999;
+    /* "Busy" means the rep is unfinished, not that something is still on screen. On the scan
+       drill the job is over the instant the tooth is scanned — it then coasts past the wand
+       with nothing left to do, and waiting for it to clear cost about three seconds of empty
+       bore between every rep. The other two drills genuinely are unfinished until the crown
+       is on, and a seated tooth sets done itself. */
+    const id=G.practice.id;
+    const alive=objs.filter(o=>o.kind==='tooth'&&!o.dead&&!o.done);
+    const unfinished = id==='scan' ? alive.some(o=>o.state==='broken') : alive.length>0;
+    /* …and never more than two on the glass at once. Releasing on the scan alone let a third
+       arrive while two scanned ones were still coasting out, which is the clutter this mode
+       is supposed to be free of: one to work, one leaving. */
+    const busy = unfinished || alive.length>=2;
+    G.spawnIn = (!busy&&G.practice.over<=0) ? Math.min(G.spawnIn,0.2) : 999;
   }
   // bent, not linear — see CFG.spawn.curve
   const shift=Math.pow(clamp(1-G.t/CFG.round,0,1),CFG.spawn.curve);
@@ -1580,7 +1591,11 @@ function update(dt){
       continue;
     }
     // world objects scroll toward the camera
-    o.z-=G.speed*G.thrust*dt;
+    /* On the scan drill a scanned tooth is finished — its case has gone to the lab — so it
+       clears out at three times the speed instead of coasting the length of the bore with
+       nothing left to do. That coast was three seconds of the next rep waiting behind it. */
+    const away=(drill()==='scan'&&o.kind==='tooth'&&o.state==='prepped')?3:1;
+    o.z-=G.speed*G.thrust*dt*away;
     if(o.spin!==undefined) o.spin+=dt*(o.sv||(o.kind==='pod'?2.2:0.9));
     if(o.pulse!==undefined) o.pulse+=dt*4;
 
