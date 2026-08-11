@@ -5320,10 +5320,17 @@ function drawTestimonial(){
      name was set at 878 — inside the picture — with the caption under it and both against the
      card's edge. Everything below the photo now has its own band, measured from the photo's
      real bottom rather than from the card's. */
-  const u=PIXEL_K*2, pw=PT_W*u, ph=PT_H*u;
-  /* 316 clears the subline at 300; 666 puts the card's foot at 982, sixteen under the caption
-     and twenty-eight above the tally at the bottom of the screen. */
-  const cy=316, cardH=666;
+  /* One block per art pixel, not two. At u=6 the portrait was 384x468 — a head half the height
+     of the screen, drawn in blocks twice the size of everything around it, which is what made
+     it look coarse rather than big. At PIXEL_K it is 192x234 and sits on the same grid as the
+     type, the cast and the bore. Everything else here follows from that: the card is 470 tall
+     instead of 666, and the space that frees goes into gaps rather than into the card.
+
+     The old layout left sixteen pixels between the caption and the card's own edge and
+     twenty-eight between the card and the tally — which is why every line looked stuck to the
+     next one. Now: 100 under the subline, 48 under the caption, 140 above the tally. */
+  const u=PIXEL_K, pw=PT_W*u, ph=PT_H*u;
+  const cy=400, cardH=470;
   const fx=RAIL+40, fw=pw+96;
   ctx.fillStyle='rgba(0,0,0,0.5)'; ctx.fillRect(fx+8,cy+10,fw,cardH);
   ctx.fillStyle=CFG.col.paper;     ctx.fillRect(fx,cy,fw,cardH);
@@ -5332,7 +5339,7 @@ function drawTestimonial(){
   txt('PATIENT',fx+fw/2,cy+38,
       {size:19,weight:800,col:'#FFF6E6',align:'center',ls:'5px',font:F_MONO});
   // the face sits on its own panel inside the card, the way a photo would
-  const fy=cy+84;
+  const fy=cy+86;
   ctx.fillStyle='rgba(20,22,28,0.92)'; ctx.fillRect(fx+40,fy-10,pw+16,ph+20);
   drawPatient(fx+48,fy,u,p,true,true);
   /* A glint on one tooth, on the same cycle as the crown on the title art. It is the only
@@ -5341,18 +5348,18 @@ function drawTestimonial(){
   const tw=(T%2.6)/2.6;
   if(tw<0.16){
     const kk=Math.sin(tw/0.16*Math.PI);
-    const gx=fx+48+32*u, gy=fy+40*u;      // the teeth run x 22..42, y 36..42 in art pixels
-    glow(gx,gy,58*kk,'#FFF6E6',0.85*kk);
+    const gx=fx+48+32*u, gy=fy+39*u;      // the teeth run x 25..39, y 36..41 in art pixels
+    glow(gx,gy,30*kk,'#FFF6E6',0.85*kk);
     ctx.fillStyle='rgba(255,255,255,'+(0.95*kk).toFixed(2)+')';
-    const r0=Math.round(30*kk/PIXEL_K)*PIXEL_K;
+    const r0=Math.round(16*kk/PIXEL_K)*PIXEL_K;
     ctx.fillRect(Math.round(gx-r0),Math.round(gy-PIXEL_K/2),r0*2,PIXEL_K);
     ctx.fillRect(Math.round(gx-PIXEL_K/2),Math.round(gy-r0),PIXEL_K,r0*2);
   }
-  const capY=fy+ph+22;                       // measured off the photo, not off the card
+  const capY=fy+ph+28;                       // measured off the photo, not off the card
   rule(fx+28,capY,fx+fw-28,'rgba(110,106,96,0.5)',2);
   txt(name+',  '+p.age,fx+fw/2,capY+42,
-      {size:24,weight:800,col:CFG.col.ink,align:'center',ls:'3px',font:F_MONO,max:fw-56});
-  txt('SAME-DAY CROWN',fx+fw/2,capY+76,
+      {size:22,weight:800,col:CFG.col.ink,align:'center',ls:'3px',font:F_MONO,max:fw-56});
+  txt('SAME-DAY CROWN',fx+fw/2,capY+74,
       {size:15,weight:700,col:CFG.col.red,align:'center',ls:'0px',font:F_MONO,max:fw-56});
 
   /* The quote carries the screen, so it is set large — and the attribution gets its own band
@@ -5364,10 +5371,10 @@ function drawTestimonial(){
   ctx.fillStyle=CFG.col.red; ctx.fillRect(qx,qy,qw,54);
   txt('IN THEIR WORDS',qx+34,qy+38,
       {size:19,weight:800,col:'#FFF6E6',ls:'5px',font:F_MONO});
-  const LN=54, top=qy+150;
+  const LN=52, top=qy+140;
   quote.forEach((l,i)=>
     txt(l,qx+34,top+i*LN,
-        {size:28,weight:800,col:CFG.col.ink,ls:'2px',font:F_MONO,max:qw-68}));
+        {size:26,weight:800,col:CFG.col.ink,ls:'2px',font:F_MONO,max:qw-68}));
   rule(qx+34,qy+cardH-96,qx+qw-34,'rgba(110,106,96,0.5)',2);
   txt(name+',  '+p.age+'  ·  PATIENT, THIS SHIFT',qx+34,qy+cardH-52,
       {size:17,weight:700,col:'rgba(110,106,96,0.95)',ls:'3px',font:F_MONO});
