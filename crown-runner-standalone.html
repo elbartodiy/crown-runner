@@ -1392,19 +1392,21 @@ function update(dt){
   // spawn pressure — stage one only; stage two arrives as a formation
   if(!implanting()&&!(G.tut&&G.tut.on)){
   G.spawnIn-=dt;
-  /* A drill never leaves the bore empty. Its clock is frozen, so the density ramp sits at
-     zero and the gap stays at gapStart's 2.6s — on top of the travel that meant up to six
-     seconds of nothing between teeth, in the one mode that exists to be repetition. The
-     moment the last tooth is dealt with the next one is already coming. */
-  if(practising()&&G.practice.over<=0
-     &&!objs.some(o=>o.kind==='tooth'&&!o.dead&&!o.done))
-    G.spawnIn=Math.min(G.spawnIn,0.2);
+  /* A drill holds exactly one tooth. One is a rep; a stream is a shift, and the first cut
+     of this put teeth on a one-second timer regardless of what was already in the bore —
+     which is how "too many at once" happens in the one mode built for repetition. The
+     steady timer is disarmed entirely: the ONLY way a drill tooth spawns is the bore going
+     empty, and then it comes at once. */
+  if(practising()){
+    const liveTooth=objs.some(o=>o.kind==='tooth'&&!o.dead&&!o.done);
+    G.spawnIn = (!liveTooth&&G.practice.over<=0) ? Math.min(G.spawnIn,0.2) : 999;
+  }
   // bent, not linear — see CFG.spawn.curve
   const shift=Math.pow(clamp(1-G.t/CFG.round,0,1),CFG.spawn.curve);
   // the bench is closed to new cases while it is closing, timer already due or not
   if(G.spawnIn<=0&&G.closing<=0){
     spawnTooth();
-    G.spawnIn=practising()?1.0:lerp(CFG.spawn.gapStart,CFG.spawn.gapEnd,shift);
+    G.spawnIn=practising()?999:lerp(CFG.spawn.gapStart,CFG.spawn.gapEnd,shift);
   }
   const elapsed=CFG.round-G.t;
   if(G.closing<=0&&elapsed>CFG.spawn.debrisAfter
@@ -2259,41 +2261,52 @@ function dropPath(c){
   c.bezierCurveTo(-0.72,-0.10,-0.30,-0.42, 0.00,-1.05);
   c.closePath();
 }
+/* The droplet, as cells. Three flat tones of the wet ramp instead of a diagonal gradient,
+   and the specular is a two-cell accent — the single-block glint pixel art reserves for
+   exactly this. The wobble that was a rotation is now a one-block sway: turning a sprite
+   breaks its grid, swaying it does not. */
+const DROP_TONES=['#BEEEFC','#7FD4F0','#2E6B84'];
+function debrisCells(R){ return clamp(Math.round(R*1.44/PIXEL_K/2)*2, 6, 40); }
 function drawDebris(o){
   const p=proj(o.x,PLANE_Y,o.z); if(p.s<0.05) return;
-  const R=o.r*p.s;
+  const R=o.r*p.s, b=PIXEL_K;
   ctx.save(); ctx.globalAlpha=clamp((1-o.z/FAR_Z)*1.6,0,1);
   glow(p.x,p.y,R*1.9,CFG.col.wet,0.22);
-  withT(ctx,p.x,p.y,R,Math.sin(o.spin*0.5)*0.12,()=>{
-    dropPath(ctx);
-    const g=ctx.createLinearGradient(-0.7,-1,0.7,1);
-    g.addColorStop(0,'rgba(190,238,252,0.92)');
-    g.addColorStop(0.45,'rgba(127,212,240,0.80)');
-    g.addColorStop(1,'rgba(46,107,132,0.85)');
-    ctx.fillStyle=g; ctx.fill();
-    ctx.lineWidth=0.07; ctx.strokeStyle='rgba(226,248,255,0.95)'; ctx.stroke();
-    // the specular that makes it read as a wet bead rather than a blue stone
-    ctx.beginPath(); ctx.ellipse(-0.24,0.16,0.17,0.26,-0.3,0,6.2832);
-    ctx.fillStyle='rgba(255,255,255,0.75)'; ctx.fill();
+  const DM=pixMask('drop', dropPath, debrisCells(R), -0.74, 0.74, -1.07, 1.07);
+  const sway=Math.round(Math.sin(o.spin*0.5)*1)*b;
+  const topY=Math.round((p.y-DM.h*b/2)/b)*b;
+  const ox=Math.round((p.x+sway-DM.w*b/2)/b)*b;
+  maskOutline(DM,p.x+sway,topY,b,'#E2F8FF');
+  drawMask(DM,p.x+sway,topY,b,(gx,gy)=>{
+    const u=(gx/DM.w)+(gy/DM.h)*0.6;           // light falls from the upper left
+    return u<0.55?DROP_TONES[0]:u<1.05?DROP_TONES[1]:DROP_TONES[2];
   });
+  // the specular that makes it read as a wet bead rather than a blue stone
+  ctx.fillStyle='#FFF6E6';
+  ctx.fillRect(ox+Math.round(DM.w*0.30)*b,topY+Math.round(DM.h*0.56)*b,b,b*2);
   ctx.restore();
 }
+/* The flying crown: the same mask the ghost above a prepped tooth uses, so what lands is
+   what was promised. Spin became a one-block sway for the same reason as the droplet. */
+const CROWN_SHADE_DK='#5A5A5A';
+function crownCells(R){ return clamp(Math.round(R*2.28/PIXEL_K/2)*2, 6, 44); }
 function drawCrownObj(o,gl){
   const p=proj(o.x,PLANE_Y,o.z); if(p.s<0.05) return;
-  const R=o.r*p.s;
+  const R=o.r*p.s, b=PIXEL_K;
   glow(p.x,p.y,R*1.8,o.crown.col,gl);
-  ctx.save();
-  withT(ctx,p.x,p.y,R,Math.sin(o.spin)*0.25,()=>{
-    partPath(ctx,o.crown);
-    ctx.fillStyle=grad('crown'+o.crown.id,()=>{
-      const g=ctx.createLinearGradient(0,-1,0,0.6);
-      g.addColorStop(0,'#FFF6E6'); g.addColorStop(0.5,o.crown.col); g.addColorStop(1,'#5A5A5A');
-      return g; });
-    ctx.fill();
-    ctx.lineWidth=0.07; ctx.strokeStyle='rgba(255,255,255,0.8)'; ctx.stroke();
-    if(o.crown.fixture) threadLines(ctx);
+  const PM=pixMask('crown-'+o.crown.id, g=>partPath(g,o.crown),
+                   crownCells(R), -1.14, 1.14, -1.12, 0.62);
+  const sway=Math.round(Math.sin(o.spin)*1)*b;
+  const topY=Math.round((p.y-PM.h*b/2)/b)*b;
+  maskOutline(PM,p.x+sway,topY,b,'#FFF6E6');
+  drawMask(PM,p.x+sway,topY,b,(gx,gy)=>{
+    const t=gy/PM.h;
+    /* A fixture is a screw, and the threads are what say so in flight: every third cell row
+       of the lower body goes dark, which at this size reads as thread the way threadLines'
+       strokes never could on a grid. */
+    if(o.crown.fixture && t>0.30 && gy%3===0) return '#282C32';
+    return t<0.26?'#FFF6E6':t<0.72?o.crown.col:CROWN_SHADE_DK;
   });
-  ctx.restore();
 }
 
 /* A socket in the arch: an open bore in bone. Once a fixture is in it the platform
@@ -2590,8 +2603,18 @@ function drawShip(){
    crown you fire is visibly the crown you just watched being made. A cut line
    descends through it: finished crown above, raw puck below, cutter riding the
    line and throwing chalk. Runs on its own clock while the scanner works ahead. */
+/* A straight run of cells between two points — the pixel line the mill's arm needed.
+   Plotted at the block, ends snapped, so a diagonal is a stair of whole blocks. */
+function pixLine(x1,y1,x2,y2,b,col){
+  const sx=Math.round(x1/b), sy=Math.round(y1/b), ex=Math.round(x2/b), ey=Math.round(y2/b);
+  const n=Math.max(Math.abs(ex-sx),Math.abs(ey-sy),1);
+  ctx.fillStyle=col;
+  for(let i=0;i<=n;i++)
+    ctx.fillRect(Math.round(sx+(ex-sx)*i/n)*b,Math.round(sy+(ey-sy)*i/n)*b,b,b);
+}
 function drawOnBoardMill(px,py,R){
   const m=G.mill[0]; if(!m) return;
+  const b=PIXEL_K;
   const eject=clamp(m.prog/0.14,0,1);
   const s=R*0.52;
   /* Out of the hatch and away to the flank, not up over the nose: parked on the
@@ -2599,84 +2622,59 @@ function drawOnBoardMill(px,py,R){
   const cx=px+R*1.32*eject;
   const cy=py-R*0.16-R*1.05*eject;
 
-  // arm carrying the work out of the hatch
-  ctx.save();
-  ctx.strokeStyle='rgba(176,184,194,0.95)'; ctx.lineWidth=Math.max(1.5,R*0.055);
-  ctx.beginPath();
-  ctx.moveTo(px+R*0.10,py-R*0.02); ctx.lineTo(cx-s*0.30,cy+s*0.85);
-  ctx.stroke();
-  ctx.strokeStyle='rgba(200,208,218,0.95)'; ctx.lineWidth=Math.max(1.5,R*0.045);
-  /* The jaws hug the block, so they move with it rather than sitting at a fixed offset. */
-  const jb=partBounds(m.crown), jhw=(jb.hw+0.17)*s, jhh=(jb.hh+0.15)*s;
-  ctx.beginPath();
-  ctx.moveTo(cx-jhw-s*0.10,cy+jhh*0.52); ctx.lineTo(cx-jhw*0.66,cy+jhh*1.02);
-  ctx.moveTo(cx+jhw+s*0.10,cy+jhh*0.52); ctx.lineTo(cx+jhw*0.66,cy+jhh*1.02);
-  ctx.stroke();
+  /* The part's own mask sets every other dimension: the blank is the mask plus two cells
+     of stock on each side — which is what a blank is — so a crown and the taller, narrower
+     fixture both work with no separate numbers. */
+  const cells=Math.max(8,Math.round(s*2.28/b/2)*2);
+  const PM=pixMask('crown-'+m.crown.id, g=>partPath(g,m.crown), cells, -1.14,1.14,-1.12,0.62);
+  const bw=PM.w+4, bh=PM.h+4;
+  const ox=Math.round((cx-bw*b/2)/b)*b, topY=Math.round((cy-bh*b/2)/b)*b;
 
-  /* The blank encloses the part with stock to remove on every side — which is what a blank is.
-     Both the block and the travel of the cut are derived from the part's measured extent, so
-     this holds for a crown and for the taller, narrower fixture without separate numbers. */
-  const bb=partBounds(m.crown);
-  const bhw=(bb.hw+0.17)*s, bhh=(bb.hh+0.15)*s;
-  const cut=cy-bhh+bhh*2*clamp(m.prog,0,1);
+  // arm carrying the work out of the hatch, and the jaws hugging the blank
+  pixLine(px+R*0.10,py-R*0.02, ox+bw*b*0.35, topY+bh*b, b, '#B0B8C2');
+  pixLine(ox-b,      topY+bh*b*0.60, ox+b*2,      topY+bh*b*0.96, b, '#C8D0DA');
+  pixLine(ox+bw*b+b, topY+bh*b*0.60, ox+bw*b-b*2, topY+bh*b*0.96, b, '#C8D0DA');
 
-  // raw blank still below the cut
-  ctx.save();
-  ctx.beginPath(); ctx.rect(cx-bhw-s*0.3,cut,bhw*2+s*0.6,bhh*2+s*0.6); ctx.clip();
-  ctx.beginPath();
-  if(ctx.roundRect) ctx.roundRect(cx-bhw,cy-bhh,bhw*2,bhh*2,s*0.14);
-  else ctx.rect(cx-bhw,cy-bhh,bhw*2,bhh*2);
-  const bg=ctx.createLinearGradient(cx-s,0,cx+s,0);
-  bg.addColorStop(0,'#8B887F'); bg.addColorStop(0.38,'#EAE6DC'); bg.addColorStop(1,'#949087');
-  ctx.fillStyle=bg; ctx.fill();   // moves with the wand, so not cacheable
-  ctx.strokeStyle='rgba(56,54,50,0.65)'; ctx.lineWidth=Math.max(1,R*0.022); ctx.stroke();
-  ctx.restore();
-
-  // finished crown revealed above the cut
-  ctx.save();
-  ctx.beginPath();
-  ctx.rect(cx-bhw-s*0.4,cy-bhh-s*0.4,bhw*2+s*0.8,Math.max(0,cut-(cy-bhh-s*0.4)));
-  ctx.clip();
-  withT(ctx,cx,cy,s,0,()=>{
-    partPath(ctx,m.crown);
-    ctx.fillStyle=grad('crown'+m.crown.id,()=>{
-      const g=ctx.createLinearGradient(0,-1,0,0.6);
-      g.addColorStop(0,'#FFF6E6'); g.addColorStop(0.5,m.crown.col); g.addColorStop(1,'#6A6A6A');
-      return g; });
-    ctx.fill();
-    ctx.lineWidth=0.07; ctx.strokeStyle='rgba(255,255,255,0.85)'; ctx.stroke();
-    if(m.crown.fixture) threadLines(ctx);
+  /* The cut is a row index. Above it the finished part shows; below it raw stock still
+     stands. One number, both halves — they cannot disagree. */
+  const cutRow=Math.round(bh*clamp(m.prog,0,1));
+  for(let gy=cutRow;gy<bh;gy++)
+    for(let gx=0;gx<bw;gx++){
+      if((gy===cutRow&&cutRow>0?false:gy===0||gy===bh-1)&&(gx===0||gx===bw-1)) continue;
+      const t=gx/bw;
+      ctx.fillStyle= t<0.24?'#8B887F' : t<0.58?'#EAE6DC' : '#949087';
+      ctx.fillRect(ox+gx*b,topY+gy*b,b,b);
+    }
+  const crTop=Math.round((cy-PM.h*b/2)/b)*b;
+  const crownCut=Math.round((topY+cutRow*b-crTop)/b);
+  drawMask(PM,cx,crTop,b,(gx,gy)=>{
+    if(gy>=crownCut) return null;
+    if(m.crown.fixture && gy/PM.h>0.30 && gy%3===0) return '#282C32';
+    const t=gy/PM.h;
+    return t<0.26?'#FFF6E6':t<0.72?m.crown.col:'#6A6A6A';
   });
-  ctx.restore();
 
-  // the cutter, traversing the work while the line descends
+  /* The cutter is a plus of cells riding the cut line. It does not rotate — the traverse
+     and the sparks carry the spinning; turning the sprite would just break its grid. */
   if(m.prog<1&&eject>=1){
-    const bx=cx+bhw*0.92*Math.sin(T*8.5);
-    ctx.save();
-    ctx.translate(bx,cut); ctx.rotate(T*26);
-    ctx.strokeStyle='rgba(220,226,234,0.95)'; ctx.lineWidth=Math.max(1.5,R*0.042);
-    ctx.beginPath(); ctx.arc(0,0,s*0.24,0,6.2832); ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(-s*0.24,0); ctx.lineTo(s*0.24,0);
-    ctx.moveTo(0,-s*0.24); ctx.lineTo(0,s*0.24);
-    ctx.stroke();
-    ctx.restore();
+    const bx=Math.round((cx+(bw*b/2)*0.92*Math.sin(T*8.5))/b)*b;
+    const cutY=topY+cutRow*b;
+    ctx.fillStyle='#DCE2EA';
+    ctx.fillRect(bx-b*2,cutY,b*5,b);
+    ctx.fillRect(bx,cutY-b*2,b,b*5);
     if(Math.random()<0.65){
       const a=rnd(-2.5,-0.65), v=rnd(140,420);
-      parts.push({x:bx,y:cut,vx:Math.cos(a)*v,vy:Math.sin(a)*v,
+      parts.push({x:bx,y:cutY,vx:Math.cos(a)*v,vy:Math.sin(a)*v,
                   life:rnd(0.18,0.42),max:0.42,col:'#FFF6E6',sz:rnd(1.5,3.6)});
     }
   }
 
   // progress collar + the shade being cut
-  ctx.strokeStyle=m.crown.col; ctx.lineWidth=Math.max(2,R*0.055); ctx.lineCap='round';
-  ctx.beginPath(); ctx.arc(cx,cy,s*1.52,-Math.PI/2,-Math.PI/2+clamp(m.prog,0,1)*6.2832); ctx.stroke();
-  ctx.lineCap='butt';
+  pixArc(cx,cy,s*1.52,b,m.crown.col,clamp(m.prog,0,1));
   if(eject>=1)
     txt(m.crown.label.toUpperCase()+' '+m.crown.shade,cx,cy+s*2.15,
         {size:Math.max(11,Math.round(R*0.19)),weight:800,col:m.crown.col,
          align:'center',ls:'1px',font:F_MONO});
-  ctx.restore();
 }
 
 function drawWorld(){
