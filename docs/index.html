@@ -1053,17 +1053,23 @@ function drillLane(){
   let i; do{ i=(Math.random()*DRILL_LANES.length)|0; }while(i===lastLane);
   lastLane=i; return DRILL_LANES[i];
 }
+/* Drill teeth start 400 units short of the full bore. At drill speed the stretch from
+   FAR_Z to the scan window alone is 3.2 seconds of watching a dot approach — dead time in
+   the one place dead time costs the most. Spawned at 2600 they are tiny and dim on arrival
+   (depth alpha covers the pop-in) and scannable in about a second and a half. */
+const DRILL_Z=2600;
 function spawnTooth(){
   const x=practising()?drillLane():freeX(FAR_Z,170);
   if(x===null) return;
+  const z0=practising()?DRILL_Z:FAR_Z;
   /* The seat drill hands them over already opened: the scanning is the previous drill's
      subject, and asking for it again here would make this drill about two things. */
   if(drill()==='seat'){
-    objs.push({kind:'tooth',state:'prepped',crown:pick(stock()),x,z:FAR_Z,pz:FAR_Z,
+    objs.push({kind:'tooth',state:'prepped',crown:pick(stock()),x,z:z0,pz:z0,
                r:44,scan:1,pulse:rnd(0,6.28),done:false,flake:0});
     return;
   }
-  objs.push({kind:'tooth',state:'broken',crown:null,x,z:FAR_Z,pz:FAR_Z,
+  objs.push({kind:'tooth',state:'broken',crown:null,x,z:z0,pz:z0,
              r:44,scan:0,pulse:rnd(0,6.28),done:false,
              chip:[rnd(0,6.28),rnd(0,6.28),rnd(0,6.28),rnd(0,6.28)],flake:0});
 }
@@ -1386,12 +1392,19 @@ function update(dt){
   // spawn pressure — stage one only; stage two arrives as a formation
   if(!implanting()&&!(G.tut&&G.tut.on)){
   G.spawnIn-=dt;
+  /* A drill never leaves the bore empty. Its clock is frozen, so the density ramp sits at
+     zero and the gap stays at gapStart's 2.6s — on top of the travel that meant up to six
+     seconds of nothing between teeth, in the one mode that exists to be repetition. The
+     moment the last tooth is dealt with the next one is already coming. */
+  if(practising()&&G.practice.over<=0
+     &&!objs.some(o=>o.kind==='tooth'&&!o.dead&&!o.done))
+    G.spawnIn=Math.min(G.spawnIn,0.2);
   // bent, not linear — see CFG.spawn.curve
   const shift=Math.pow(clamp(1-G.t/CFG.round,0,1),CFG.spawn.curve);
   // the bench is closed to new cases while it is closing, timer already due or not
   if(G.spawnIn<=0&&G.closing<=0){
     spawnTooth();
-    G.spawnIn=lerp(CFG.spawn.gapStart,CFG.spawn.gapEnd,shift);
+    G.spawnIn=practising()?1.0:lerp(CFG.spawn.gapStart,CFG.spawn.gapEnd,shift);
   }
   const elapsed=CFG.round-G.t;
   if(G.closing<=0&&elapsed>CFG.spawn.debrisAfter
@@ -2011,31 +2024,86 @@ function drawAimLine(){
   ctx.setLineDash([]);
 }
 
+/* ── THE TOOTH, AS A SPRITE ─────────────────────────────────────────────── */
+/* The mask resolution follows the projected size but is quantised to steps of four cells,
+   so the tooth grows in discrete generations as it approaches — which is how a sprite
+   scales — and the pixMask cache stays at a couple of dozen entries instead of one per
+   depth. The block itself never changes: PIXEL_K everywhere, like the wand. */
+function toothCells(R){ return clamp(Math.round(R*2.24/PIXEL_K/4)*4, 8, 96); }
+/* A quarter of pixRing, effectively: circle cells plotted only up to `frac` of the way
+   round from twelve o'clock. The scan progress used to be a stroked arc with round caps —
+   the one drawing in the bore that could not survive the grid. */
+function pixArc(cx,cy,r,b,col,frac){
+  const rb=Math.max(2,Math.round(r/b));
+  const ox=Math.round(cx/b)*b, oy=Math.round(cy/b)*b;
+  ctx.fillStyle=col;
+  const steps=Math.ceil(6.2832*rb), seen=new Set();
+  for(let i=0;i<=steps*clamp(frac,0,1);i++){
+    const a=-Math.PI/2+(i/steps)*6.2832;
+    const gx=Math.round(Math.cos(a)*rb), gy=Math.round(Math.sin(a)*rb);
+    const k=gx+'/'+gy; if(seen.has(k)) continue; seen.add(k);
+    ctx.fillRect(ox+gx*b,oy+gy*b,b,b);
+  }
+}
+/* A crack is a run of single dark cells along a polyline given in the tooth's unit space.
+   One cell wide, because at this block size a crack IS one pixel: drawn any wider it reads
+   as a band, not a fracture. */
+function crackCells(m,ox,topY,b,pts,col){
+  ctx.fillStyle=col;
+  const toCell=(ux,uy)=>[ (ux-m.x0)/(m.x1-m.x0)*m.w, (uy-m.y0)/(m.y1-m.y0)*m.h ];
+  for(let s=0;s<pts.length-1;s++){
+    const [ax,ay]=toCell(pts[s][0],pts[s][1]), [bx,by]=toCell(pts[s+1][0],pts[s+1][1]);
+    const n=Math.max(1,Math.ceil(Math.max(Math.abs(bx-ax),Math.abs(by-ay))));
+    for(let i=0;i<=n;i++){
+      const gx=Math.round(ax+(bx-ax)*i/n), gy=Math.round(ay+(by-ay)*i/n);
+      if(gx<0||gy<0||gx>=m.w||gy>=m.h||!m.g[gy*m.w+gx]) continue;
+      ctx.fillRect(ox+gx*b,topY+gy*b,b,b);
+    }
+  }
+}
+/* Stain arrives in three discrete stages, not on a slider: each stage is a set of colours
+   already in the file, so decay cannot mint in-between shades the palette never chose. */
+const TOOTH_TONES=[
+  ['#7E7566','#5C5548','#3B372F'],   // fresh crack
+  ['#5C5548','#453F35','#2C2823'],   // stained
+  ['#453F35','#2C2823','#1A1512'],   // nearly gone
+];
+const PREP_TONES=['#FBF6EA','#DCD3C0','#8E8676'];
+const SOCK_TONES=['#E4D8C4','#C0B29A','#7E7360'];
+/* Corner brackets as filled blocks, one block thick. */
+function pixBrackets(px,py,q,k,b,col){
+  ctx.fillStyle=col;
+  const s=v=>Math.round(v/b)*b;
+  q=s(q); k=Math.max(b*2,s(k));
+  const L=[[px-q,py-q,k,b],[px-q,py-q,b,k],[px+q-k,py-q,k,b],[px+q-b,py-q,b,k],
+           [px-q,py+q-b,k,b],[px-q,py+q-k,b,k],[px+q-k,py+q-b,k,b],[px+q-b,py+q-k,b,k]];
+  for(const [x,y,w,h] of L) ctx.fillRect(s(x),s(y),w,h);
+}
 function drawTooth(o){
   const p=proj(o.x,PLANE_Y,o.z); if(p.s<0.05) return;
   const R=o.r*p.s, a=clamp(1-o.z/FAR_Z,0.05,1);
   ctx.globalAlpha=clamp(a*1.5,0,1);
 
   if(o.state==='crumbling'){
-    /* Three rigid bands of the same silhouette, each clipped in the tooth's own
-       space so it stays a slice of the tooth, then slid, turned and sunk as a
-       piece. The lower bands go first and fastest — it collapses, not bursts. */
+    /* The same three bands, but as slices of the sprite's own cell rows, slid by whole
+       blocks and never rotated — turning a pixel sprite breaks the grid it lives on.
+       The lower bands go first and fastest — it collapses, not bursts. */
     const c=clamp(o.cr,0,1), fade=1-Math.max(0,(c-0.62)/0.38);
     ctx.globalAlpha=clamp(a*1.5,0,1)*fade;
+    const b=PIXEL_K, cells=toothCells(R);
+    const TM=pixMask('tooth', toothPath, cells, -1.12, 1.12, -1.24, 1.14);
+    const topY=Math.round((p.y-TM.h*b/2)/b)*b;
+    const tones=TOOTH_TONES[1];
     for(let k=0;k<3;k++){
       const seed=(o.chip&&o.chip[k])||k*2.1;
-      const dx=Math.cos(seed)*R*0.34*c;
-      const dy=R*(0.18+0.42*k)*c*c*1.9;
-      const rot=Math.sin(seed)*0.55*c;
-      ctx.save();
-      ctx.translate(p.x+dx,p.y+dy); ctx.rotate(rot); ctx.scale(R,R);
-      ctx.beginPath(); ctx.rect(-1.4,-1.3+k*(2.6/3),2.8,2.6/3); ctx.clip();
-      toothPath(ctx);
-      const g=ctx.createLinearGradient(0,-1,0,1);
-      g.addColorStop(0,'#5F5849'); g.addColorStop(0.55,'#453F35'); g.addColorStop(1,'#2C2823');
-      ctx.fillStyle=g; ctx.fill();
-      ctx.lineWidth=0.05; ctx.strokeStyle='rgba(8,8,9,0.95)'; ctx.stroke();
-      ctx.restore();
+      const dx=Math.round(Math.cos(seed)*R*0.34*c/b)*b;
+      const dy=Math.round(R*(0.18+0.42*k)*c*c*1.9/b)*b;
+      const y0=Math.floor(TM.h*k/3), y1=Math.floor(TM.h*(k+1)/3);
+      drawMask(TM,p.x+dx,topY+dy,b,(gx,gy)=>{
+        if(gy<y0||gy>=y1) return null;
+        const t=gy/TM.h;
+        return t<0.32?tones[0]:t<0.70?tones[1]:tones[2];
+      });
     }
     // named where it happens, so the loss explains itself
     if(c<0.8){
@@ -2049,90 +2117,67 @@ function drawTooth(o){
   }
   if(o.state==='broken'&&implanting()){
     /* A socket, closing. Here decay is bone growing back over the site: the longer
-       you leave it the less of an opening is left, and past the line it is gone. */
+       you leave it the less of an opening is left, and past the line it is gone.
+       The closing is the cavity mask redrawn at fewer cells — on a grid an opening
+       shrinks in whole-cell steps, not on a slider. */
     const dec=decayOf(o);
-    withT(ctx,p.x,p.y,R,0,()=>{
-      socketPath(ctx);
-      const g=ctx.createLinearGradient(0,-1,0,1);
-      g.addColorStop(0,'#E4D8C4'); g.addColorStop(0.5,'#C0B29A'); g.addColorStop(1,'#7E7360');
-      ctx.fillStyle=g; ctx.fill();
-      ctx.lineWidth=0.05; ctx.strokeStyle='rgba(12,12,14,0.75)'; ctx.stroke();
-      ctx.save(); ctx.scale(1-dec*0.55,1-dec*0.35);
-      cavityPath(ctx);
-      ctx.fillStyle='#1A1512'; ctx.fill();
-      ctx.restore();
-      if(dec>0.35){ ctx.globalAlpha=dec*0.5;
-        ctx.fillStyle='#C0B29A'; cavityPath(ctx); ctx.fill(); ctx.globalAlpha=1; }
+    const b=PIXEL_K, cells=toothCells(R);
+    const SM=pixMask('socketW', socketPath, cells, -1.12, 1.12, -1.02, 1.04);
+    const topY=Math.round((p.y-SM.h*b/2)/b)*b;
+    maskOutline(SM,p.x,topY,b,'#0A0808');
+    drawMask(SM,p.x,topY,b,(gx,gy)=>{
+      const t=gy/SM.h;
+      return t<0.30?SOCK_TONES[0]:t<0.62?SOCK_TONES[1]:SOCK_TONES[2];
     });
+    const cavCells=Math.max(4,Math.round(cells*0.42*(1-dec*0.5)/2)*2);
+    const CM=pixMask('cavityW', cavityPath, cavCells, -0.46, 0.46, -0.72, 0.68);
+    drawMask(CM,p.x,topY+Math.round(SM.h*0.16)*b,b,()=>'#1A1512');
     const live=mode==='PLAY'&&o.z>(practising()?NEAR_CULL:scanNear())&&o.z<scanFar();
     if(live){
       const pl=0.5+0.5*Math.sin(o.pulse);
-      ctx.strokeStyle=`rgba(255,204,51,${(0.22+0.30*pl).toFixed(2)})`;
-      ctx.lineWidth=Math.max(1,2.2*p.s);
-      const q=R*1.35,k=R*0.42;
-      ctx.beginPath();
-      ctx.moveTo(p.x-q,p.y-q+k); ctx.lineTo(p.x-q,p.y-q); ctx.lineTo(p.x-q+k,p.y-q);
-      ctx.moveTo(p.x+q-k,p.y-q); ctx.lineTo(p.x+q,p.y-q); ctx.lineTo(p.x+q,p.y-q+k);
-      ctx.moveTo(p.x+q,p.y+q-k); ctx.lineTo(p.x+q,p.y+q); ctx.lineTo(p.x+q-k,p.y+q);
-      ctx.moveTo(p.x-q+k,p.y+q); ctx.lineTo(p.x-q,p.y+q); ctx.lineTo(p.x-q,p.y+q-k);
-      ctx.stroke();
-    }
-    if(o.scan>0){
-      ctx.save(); ctx.strokeStyle=CFG.col.score; ctx.lineWidth=Math.max(2,5*p.s);
-      ctx.lineCap='round';
-      ctx.beginPath(); ctx.arc(p.x,p.y,R*1.62,-Math.PI/2,-Math.PI/2+o.scan*6.2832); ctx.stroke();
+      ctx.save(); ctx.globalAlpha*=0.22+0.30*pl;
+      pixBrackets(p.x,p.y,R*1.35,R*0.42,b,CFG.col.score);
       ctx.restore();
     }
+    if(o.scan>0) pixArc(p.x,p.y,R*1.62,b,CFG.col.score,o.scan);
     ctx.globalAlpha=1;
     return;
   }
   if(o.state==='broken'){
     /* Dull and stained, and it keeps failing on the way in: more cracks, chips
-       off the cusps, colour going out of it. By the point of no return it is
-       obvious the tooth is beyond saving, which is what makes it fair when the
-       scan window closes. */
+       off the cusps, colour going out of it. Decay is three discrete stain stages and
+       cell-by-cell damage, not a slider — a sprite gets worse in steps. */
     const dec=decayOf(o);
     // it sags in the final stretch, so the collapse is arriving, not sprung
     const slump=dec>0.86?(dec-0.86)/0.14:0;
-    ctx.save(); ctx.translate(0,slump*R*0.16);
-    withT(ctx,p.x,p.y,R,0,()=>{
-      if(slump) ctx.scale(1+slump*0.07,1-slump*0.13);
-      toothPath(ctx);
-      ctx.fillStyle=grad('toothBroken',()=>{
-        const g=ctx.createLinearGradient(0,-1,0,1);
-        g.addColorStop(0,'#7E7566'); g.addColorStop(0.55,'#5C5548'); g.addColorStop(1,'#3B372F');
-        return g; });
-      ctx.fill();
-      if(dec>0){ ctx.save(); ctx.clip();
-        ctx.fillStyle='rgba(14,12,10,'+(dec*0.5).toFixed(3)+')';
-        ctx.fillRect(-1.2,-1.3,2.4,2.6); ctx.restore(); }
-      ctx.lineWidth=0.055; ctx.strokeStyle='rgba(12,12,14,0.9)'; ctx.stroke();
-      // the original fissure, opening up as it comes in
-      ctx.lineWidth=0.05+dec*0.05; ctx.strokeStyle='rgba(8,8,9,0.95)';
-      ctx.beginPath(); ctx.moveTo(-0.12,-0.86); ctx.lineTo(0.06,-0.42);
-      ctx.lineTo(-0.10,-0.10); ctx.lineTo(0.10,0.24); ctx.stroke();
-      // further cracks appear in stages
-      if(dec>0.30){
-        ctx.lineWidth=0.04+dec*0.04;
-        ctx.beginPath(); ctx.moveTo(0.62,-0.72); ctx.lineTo(0.30,-0.34); ctx.lineTo(0.44,0.06); ctx.stroke();
-      }
-      if(dec>0.60){
-        ctx.beginPath(); ctx.moveTo(-0.66,-0.66); ctx.lineTo(-0.34,-0.22); ctx.lineTo(-0.50,0.16); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(-0.20,0.30); ctx.lineTo(0.14,0.36); ctx.stroke();
-      }
-      // chips broken out of the cusps
-      const chips=Math.floor(dec*4);
-      ctx.fillStyle='#100F0D';
-      for(let i=0;i<chips;i++){
-        const a=o.chip[i], rx=Math.cos(a)*0.78, ry=-0.75+Math.abs(Math.sin(a))*0.5;
-        ctx.beginPath();
-        ctx.moveTo(rx,ry);
-        ctx.lineTo(rx+0.22*Math.cos(a+1.1),ry+0.20*Math.sin(a+1.1));
-        ctx.lineTo(rx+0.20*Math.cos(a-0.9),ry+0.24*Math.sin(a-0.9));
-        ctx.closePath(); ctx.fill();
-      }
+    const b=PIXEL_K, cells=toothCells(R);
+    const TM=pixMask('tooth', toothPath, cells, -1.12, 1.12, -1.24, 1.14);
+    const cy=p.y+Math.round(slump*R*0.16/b)*b;
+    const topY=Math.round((cy-TM.h*b/2)/b)*b;
+    const ox=Math.round((p.x-TM.w*b/2)/b)*b;
+    const tones=TOOTH_TONES[dec<0.33?0:dec<0.66?1:2];
+    maskOutline(TM,p.x,topY,b,'#0A0808');
+    drawMask(TM,p.x,topY,b,(gx,gy)=>{
+      const t=gy/TM.h;
+      return t<0.32?tones[0]:t<0.70?tones[1]:tones[2];
     });
-    ctx.restore();          // closes the slump offset
+    // the original fissure, then more in stages — single-cell runs, a crack is one pixel
+    crackCells(TM,ox,topY,b,[[-0.12,-0.86],[0.06,-0.42],[-0.10,-0.10],[0.10,0.24]],'#0A0808');
+    if(dec>0.30)
+      crackCells(TM,ox,topY,b,[[0.62,-0.72],[0.30,-0.34],[0.44,0.06]],'#0A0808');
+    if(dec>0.60){
+      crackCells(TM,ox,topY,b,[[-0.66,-0.66],[-0.34,-0.22],[-0.50,0.16]],'#0A0808');
+      crackCells(TM,ox,topY,b,[[-0.20,0.30],[0.14,0.36]],'#0A0808');
+    }
+    // chips broken out of the cusps: two-cell notches of dark, keyed to the same seeds
+    const chips=Math.floor(dec*4);
+    ctx.fillStyle='#100F0D';
+    for(let i=0;i<chips;i++){
+      const ca=o.chip[i];
+      const gx=Math.round(((Math.cos(ca)*0.78+1.12)/2.24)*TM.w);
+      const gy=Math.round(((-0.75+Math.abs(Math.sin(ca))*0.5+1.24)/2.38)*TM.h);
+      ctx.fillRect(ox+clamp(gx,0,TM.w-2)*b,topY+clamp(gy,0,TM.h-2)*b,b*2,b*2);
+    }
     // it sheds material as it goes
     if(dec>0.45&&Math.random()<dec*0.35){
       const a=rnd(0,6.283), v=rnd(40,150);
@@ -2144,55 +2189,54 @@ function drawTooth(o){
     const live=mode==='PLAY'&&o.z>(practising()?NEAR_CULL:scanNear())&&o.z<scanFar();
     if(live){
       const pl=0.5+0.5*Math.sin(o.pulse);
-      ctx.strokeStyle=`rgba(255,204,51,${(0.22+0.30*pl).toFixed(2)})`;
-      ctx.lineWidth=Math.max(1,2.2*p.s);
-      const q=R*1.35,k=R*0.42;
-      ctx.beginPath();
-      ctx.moveTo(p.x-q,p.y-q+k); ctx.lineTo(p.x-q,p.y-q); ctx.lineTo(p.x-q+k,p.y-q);
-      ctx.moveTo(p.x+q-k,p.y-q); ctx.lineTo(p.x+q,p.y-q); ctx.lineTo(p.x+q,p.y-q+k);
-      ctx.moveTo(p.x+q,p.y+q-k); ctx.lineTo(p.x+q,p.y+q); ctx.lineTo(p.x+q-k,p.y+q);
-      ctx.moveTo(p.x-q+k,p.y+q); ctx.lineTo(p.x-q,p.y+q); ctx.lineTo(p.x-q,p.y+q-k);
-      ctx.stroke();
-    }
-    if(o.scan>0){
-      ctx.save(); ctx.strokeStyle=CFG.col.score; ctx.lineWidth=Math.max(2,5*p.s);
-      ctx.lineCap='round';
-      ctx.beginPath(); ctx.arc(p.x,p.y,R*1.62,-Math.PI/2,-Math.PI/2+o.scan*6.2832); ctx.stroke();
+      ctx.save(); ctx.globalAlpha*=0.22+0.30*pl;
+      pixBrackets(p.x,p.y,R*1.35,R*0.42,b,CFG.col.score);
       ctx.restore();
     }
+    if(o.scan>0) pixArc(p.x,p.y,R*1.62,b,CFG.col.score,o.scan);
   }else if(o.state==='prepped'){
     /* Prepped and luminous: bone white is spent only here, so the target you
        must hit is the brightest thing in the chamber. The crown it needs shows
        as a dashed ghost — the proposed restoration, not a crown already there. */
     const col=o.crown.col;
+    const b=PIXEL_K, cells=toothCells(R);
     glow(p.x,p.y,R*2.1,'#F2ECDF',0.30*Math.min(1,p.s));
-    ctx.save();
-    withT(ctx,p.x,p.y,R,0,()=>{
-      toothPath(ctx);
-      ctx.fillStyle=grad('toothPrepped',()=>{
-        const g=ctx.createLinearGradient(0,-1,0,1);
-        g.addColorStop(0,'#FBF6EA'); g.addColorStop(0.5,'#DCD3C0'); g.addColorStop(1,'#8E8676');
-        return g; });
-      ctx.fill();
-      ctx.lineWidth=0.05; ctx.strokeStyle='rgba(12,12,14,0.7)'; ctx.stroke();
-      ctx.lineWidth=0.07; ctx.strokeStyle=col;
-      if(o.crown.fixture){ cavityPath(ctx); ctx.stroke(); }
-      else { ctx.beginPath(); ctx.moveTo(-0.95,-0.16);
-             ctx.bezierCurveTo(-0.4,0.06,0.4,0.06,0.95,-0.16); ctx.stroke(); }
+    const TM=pixMask('tooth', toothPath, cells, -1.12, 1.12, -1.24, 1.14);
+    const topY=Math.round((p.y-TM.h*b/2)/b)*b;
+    const ox=Math.round((p.x-TM.w*b/2)/b)*b;
+    maskOutline(TM,p.x,topY,b,'#0A0808');
+    /* The margin drawn in the crown's colour: for a fixture the cavity mouth, for a crown a
+       single row of cells across the tooth — where the restoration will sit. */
+    const marginRow=Math.round(TM.h*0.44);
+    drawMask(TM,p.x,topY,b,(gx,gy)=>{
+      const t=gy/TM.h;
+      if(!o.crown.fixture && gy===marginRow) return col;
+      return t<0.30?PREP_TONES[0]:t<0.66?PREP_TONES[1]:PREP_TONES[2];
     });
-    ctx.restore();
+    if(o.crown.fixture){
+      const CM2=pixMask('cavityW', cavityPath, Math.max(4,Math.round(cells*0.42/2)*2),
+                        -0.46, 0.46, -0.72, 0.68);
+      maskOutline(CM2,p.x,topY+Math.round(TM.h*0.20)*b,b,col);
+    }
     /* The ghost turns crimson and beats faster once the case is about to run out
-       of runway, so a tooth is never quietly lost. */
+       of runway, so a tooth is never quietly lost. Outline cells of the crown's own
+       mask, every other pair skipped — a dashed contour in blocks. */
     const urgent=mode==='PLAY'&&o.z<SHIP_Z+520;
-    const hov=Math.sin(o.pulse*(urgent?2.4:0.8))*R*0.10;
-    withT(ctx,p.x,p.y-R*1.20+hov,R*0.90,0,()=>{
-      partPath(ctx,o.crown);
-      ctx.setLineDash([0.20,0.14]);
-      ctx.lineWidth=urgent?0.13:0.09;
-      ctx.strokeStyle=urgent?(Math.sin(T*18)>0?CFG.col.redHot:col):col;
-      ctx.stroke();
-      ctx.setLineDash([]);
-    });
+    const hov=Math.round(Math.sin(o.pulse*(urgent?2.4:0.8))*R*0.10/b)*b;
+    const gcol=urgent?(Math.sin(T*18)>0?CFG.col.redHot:col):col;
+    const PMG=pixMask('crown-'+o.crown.id, g=>partPath(g,o.crown),
+                      Math.max(6,Math.round(cells*0.9/2)*2), -1.14, 1.14, -1.12, 0.62);
+    const gTop=Math.round((p.y-R*1.20+hov-PMG.h*b/2)/b)*b;
+    const gox=Math.round((p.x-PMG.w*b/2)/b)*b;
+    ctx.fillStyle=gcol;
+    { const at=(x,y)=>(x<0||y<0||x>=PMG.w||y>=PMG.h)?0:PMG.g[y*PMG.w+x];
+      let n=0;
+      for(let gy=0;gy<PMG.h;gy++) for(let gx=0;gx<PMG.w;gx++){
+        if(!at(gx,gy)) continue;
+        if(at(gx-1,gy)&&at(gx+1,gy)&&at(gx,gy-1)&&at(gx,gy+1)) continue;
+        if(((n++)%4)<2) ctx.fillRect(gox+gx*b,gTop+gy*b,b,b);
+      }
+    }
     if(p.s>0.55){
       ctx.globalAlpha=clamp((p.s-0.55)*1.4,0,0.95);
       txt(o.crown.shade,p.x,p.y-R*2.05,{size:Math.round(20*Math.min(1.6,p.s)),weight:700,
