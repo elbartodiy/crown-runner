@@ -5173,27 +5173,43 @@ function drawPatient(ox,oy,u,p,after,happy){
   const lit=skTone(p,-1), loc=p.skin, shd=skTone(p,1), deep=skTone(p,2);
   const hairDk='#1E1A16';
 
-  // ── shoulders, and what kind of top it is ──
-  const sy=chin+6;
+  /* ── shoulders ─────────────────────────────────────────────────────────
+     A profile per row, like the head, instead of a widening trapezoid. Two brackets: the
+     shoulder line rises fast from the neck and then flattens out towards the arm, which is
+     what a shoulder does — the old one grew at a constant rate and read as a brick. The
+     deltoid catches the light on the left and turns away on the right, and a collar seam
+     sits where the garment actually folds. */
+  const sy=chin+5;
+  const SHW=(y)=>{                                  // half-width of the body at row y
+    const t=clamp((y-sy)/9,0,1);
+    return Math.round(7+Math.sqrt(t)*23);           // fast at first, then easing out
+  };
   for(let y=sy;y<PT_H;y++){
-    const t=clamp((y-sy)/6,0,1);
-    const hw=Math.round(16+t*14);
+    const hw=SHW(y);
     P(CXC-hw,y,hw*2,1,p.top);
+    P(CXC-hw,y,4,1,'rgba(255,255,255,0.12)');       // lit deltoid
+    P(CXC+hw-4,y,4,1,'rgba(10,12,16,0.26)');        // and the far one
   }
-  P(CXC-16,sy,32,1,K);
-  // a shoulder that catches the light, and one that does not
-  for(let y=sy+1;y<PT_H;y++){
-    const t=clamp((y-sy)/6,0,1), hw=Math.round(16+t*14);
-    P(CXC-hw,y,3,1,'rgba(255,255,255,0.10)');
-    P(CXC+hw-3,y,3,1,'rgba(10,12,16,0.22)');
+  // the keyline follows the same profile, so the silhouette steps instead of stair-casing
+  for(let y=sy;y<PT_H;y++){
+    const hw=SHW(y), up=SHW(y-1);
+    P(CXC-hw-1,y,1,1,K); P(CXC+hw,y,1,1,K);
+    if(y>sy&&up<hw){ P(CXC-hw-1,y-1,hw-up+1,1,K); P(CXC+up,y-1,hw-up+1,1,K); }
   }
-  if(p.topStyle===1){                           // an open collar
-    P(CXC-8,sy,5,6,'#EFE9DA'); P(CXC+3,sy,5,6,'#EFE9DA');
-    P(CXC-8,sy,5,1,K);        P(CXC+3,sy,5,1,K);
-    P(CXC-1,sy,2,7,K);
+  P(CXC-SHW(sy),sy-1,SHW(sy)*2,1,K);                // the top of the trapezius
+  /* Where the neck meets the body, the garment is in the head's shadow. */
+  for(let y=sy;y<sy+4;y++){ const hw=SHW(y);
+    P(CXC-Math.min(hw,9),y,Math.min(hw,9)*2,1,'rgba(10,12,16,0.28)'); }
+  if(p.topStyle===1){                               // an open collar
+    P(CXC-9,sy,5,7,'#EFE9DA'); P(CXC+4,sy,5,7,'#EFE9DA');
+    P(CXC-9,sy,5,1,K);         P(CXC+4,sy,5,1,K);
+    P(CXC-2,sy,4,8,K);                              // the opening between the points
   }
-  if(p.topStyle===2){ P(CXC-5,sy,10,6,loc); P(CXC-5,sy,10,1,K); }        // v-neck
-  if(p.topStyle===3){ P(CXC-30,sy+8,60,1,'rgba(10,12,16,0.45)'); }       // blouse seam
+  if(p.topStyle===2){ P(CXC-5,sy,10,7,loc); P(CXC-5,sy,10,1,K); }        // v-neck
+  if(p.topStyle===3){                                                     // a shoulder seam
+    for(let y=sy+3;y<PT_H;y++){ const hw=SHW(y);
+      P(CXC-hw+5,y,1,1,'rgba(10,12,16,0.30)'); P(CXC+hw-6,y,1,1,'rgba(10,12,16,0.30)'); }
+  }
 
   // ── neck, in shadow because the head is over it ──
   for(let y=chin-3;y<sy;y++) P(CXC-5,y,10,1,y<chin?loc:shd);
@@ -5243,44 +5259,57 @@ function drawPatient(ox,oy,u,p,after,happy){
     P(CXC-HW(PT_TOP)-1,PT_TOP-1,HW(PT_TOP)*2+2,1,K);
   }
 
-  // ── eyes ──
-  const ey=PT_TOP+18;
-  P(CXC-12,ey-5,7,2,hairDk); P(CXC+5,ey-5,7,2,hairDk);           // brows
-  P(CXC-12,ey,6,4,'#FFF6E6'); P(CXC+6,ey,6,4,'#FFF6E6');
-  P(CXC-10,ey+1,3,3,'#1E1A16'); P(CXC+8,ey+1,3,3,'#1E1A16');     // iris
-  P(CXC-12,ey,6,1,shd); P(CXC+6,ey,6,1,shd);                     // lid, not a black bar
+  /* ── eyes ──────────────────────────────────────────────────────────────
+     Whites, an iris and a lid that is skin in shadow. They were 6x4 blocks of white under a
+     solid black bar, which at this size is not an eye — it is a slot. */
+  const ey=PT_TOP+17;
+  P(CXC-11,ey-4,6,1,hairDk); P(CXC-12,ey-3,2,1,hairDk);      // brows, lifted at the outer end
+  P(CXC+5,ey-4,6,1,hairDk);  P(CXC+10,ey-3,2,1,hairDk);
+  P(CXC-11,ey,5,3,'#FFF6E6'); P(CXC+6,ey,5,3,'#FFF6E6');
+  P(CXC-9,ey+1,2,2,'#1E1A16'); P(CXC+7,ey+1,2,2,'#1E1A16');  // iris
+  P(CXC-11,ey-1,5,1,shd);     P(CXC+6,ey-1,5,1,shd);         // lid
   if(p.glasses){
-    P(CXC-14,ey-2,9,1,K); P(CXC-14,ey+5,9,1,K);
-    P(CXC-14,ey-2,1,8,K); P(CXC-6,ey-2,1,8,K);
-    P(CXC+5,ey-2,9,1,K);  P(CXC+5,ey+5,9,1,K);
-    P(CXC+5,ey-2,1,8,K);  P(CXC+13,ey-2,1,8,K);
+    P(CXC-13,ey-2,8,1,K); P(CXC-13,ey+4,8,1,K);
+    P(CXC-13,ey-2,1,7,K); P(CXC-6,ey-2,1,7,K);
+    P(CXC+5,ey-2,8,1,K);  P(CXC+5,ey+4,8,1,K);
+    P(CXC+5,ey-2,1,7,K);  P(CXC+12,ey-2,1,7,K);
     P(CXC-5,ey,5,1,K);
   }
-  // ── nose: a plane turning away, not a grey box ──
-  P(CXC,ey+5,2,4,shd); P(CXC-2,ey+8,4,1,shd); P(CXC+2,ey+7,1,2,deep);
+  // ── nose: one plane turning away from the light, and the shadow it drops ──
+  P(CXC+1,ey+4,1,5,shd); P(CXC-1,ey+8,3,1,shd); P(CXC+2,ey+8,1,1,deep);
 
-  // ── the smile ──
-  /* Built column by column off a parabola, so the corners lift and the teeth follow the curve.
-     A straight band of white between two lines is a grill; a smile is an arc. */
-  const my=PT_TOP+28, mx0=CXC-7, mx1=CXC+7;
-  for(let x=mx0;x<=mx1;x++){
-    const t=(x-CXC)/7, lift=Math.round(t*t*3), th=3-Math.round(t*t);
-    P(x,my+lift,1,1,'#3A1A20');                       // the line between the lips
-    const gapCol = (!after && Math.floor((x-mx0)/3)===p.gap);
-    P(x,my+lift+1,1,th,gapCol?'#180C10':'#FFFBF2');   // enamel
-    if((x-mx0)%3===0&&x>mx0) P(x,my+lift+1,1,th,'#D8CFC0');   // separations between teeth
-    P(x,my+lift+1+th,1,1,'#7A3038');                  // lower lip
-    P(x,my+lift+2+th,1,1,shd);                        // and its shadow on the chin
-  }
-  /* A beard follows the jaw and leaves the mouth alone. Filling every row below the lip across
-     the full width of the head — which is what this did — is a dark bib that swallows the one
-     thing the whole screen exists to show. */
+  const my=PT_TOP+29;
+  /* ── beard, before the mouth so the mouth cuts through it ──────────────
+     A mass filling the jaw, not a line tracing it. Drawn as an outline it read as a chin
+     strap; drawn across every row below the lip it was a bib. It is inset one cell from the
+     silhouette, and four cells at the lip so the moustache does not swallow the smile. */
   if(p.beard){
-    for(let y=ey+6;y<chin;y++){ const hw=HW(y);
-      P(CXC-hw,y,3,1,p.hair); P(CXC+hw-3,y,3,1,hairDk); }        // up the jaw, both sides
-    for(let y=my+7;y<chin;y++){ const hw=HW(y);
-      P(CXC-hw+3,y,hw*2-6,1,p.hair); }                            // the chin itself
-    P(CXC-6,my-1,5,1,p.hair); P(CXC+2,my-1,5,1,p.hair);           // moustache, clear of the smile
+    for(let y=ey+5;y<my-2;y++){ const hw=HW(y);
+      P(CXC-hw+1,y,3,1,p.hair); P(CXC+hw-4,y,3,1,hairDk); }   // sideburns to the jaw
+    for(let y=my-2;y<chin;y++){ const hw=HW(y);
+      const ins = y<my+2 ? 5 : 1;
+      P(CXC-hw+ins,y,(hw-ins)*2,1,p.hair);
+      P(CXC+hw-ins-3,y,3,1,hairDk);
+    }
+  }
+
+  /* ── the smile ─────────────────────────────────────────────────────────
+     Eleven cells and two rows of enamel, framed by both lips. The last cut was fifteen cells
+     of white three rows deep with a dark line over it, which at this size is a set of bared
+     teeth — a grimace, not a smile. Lips on both sides and less of them showing is what makes
+     it read warm. */
+  const mx0=CXC-5, mx1=CXC+5;
+  for(let x=mx0;x<=mx1;x++){
+    /* MINUS the lift, not plus. Y grows downward, so adding it dropped the corners — every
+       version of this mouth so far has been a frown, which is exactly why the face read as a
+       snarl however the teeth were drawn. */
+    const t=(x-CXC)/5, lift=Math.round(t*t*2);
+    P(x,my-lift,1,1,'#7A3038');                        // upper lip
+    const gapCol = (!after && Math.floor((x-mx0)/3)===p.gap);
+    P(x,my-lift+1,1,2,gapCol?'#180C10':'#FFFBF2');     // enamel
+    if((x-mx0)%3===0&&x>mx0&&!gapCol) P(x,my-lift+1,1,2,'#D8CFC0');
+    P(x,my-lift+3,1,1,'#7A3038');                      // lower lip
+    P(x,my-lift+4,1,1,shd);                            // and its shadow on the chin
   }
 }
 
