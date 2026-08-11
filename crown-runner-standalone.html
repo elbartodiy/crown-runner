@@ -5298,19 +5298,26 @@ function drawPatient(ox,oy,u,p,after,happy){
      of white three rows deep with a dark line over it, which at this size is a set of bared
      teeth — a grimace, not a smile. Lips on both sides and less of them showing is what makes
      it read warm. */
-  const mx0=CXC-5, mx1=CXC+5;
+  /* One row of enamel, not two, and more lip than teeth. A block of white this size is a grin,
+     and ten of them side by side is a row of forced grins — which is what made the card
+     uncomfortable to look at. A single lit row under a lip line reads as somebody pleased,
+     which is all it has to say. Width varies by a cell between people so a sheet of patients
+     is not the same mouth stamped ten times.
+
+     MINUS the lift, not plus: Y grows downward, so adding it dropped the corners, and every
+     version of this mouth before that fix was a frown. */
+  const mw=4+(p.age%2), mx0=CXC-mw, mx1=CXC+mw;
   for(let x=mx0;x<=mx1;x++){
-    /* MINUS the lift, not plus. Y grows downward, so adding it dropped the corners — every
-       version of this mouth so far has been a frown, which is exactly why the face read as a
-       snarl however the teeth were drawn. */
-    const t=(x-CXC)/5, lift=Math.round(t*t*2);
+    const t=(x-CXC)/mw, lift=Math.round(t*t*2);
     P(x,my-lift,1,1,'#7A3038');                        // upper lip
     const gapCol = (!after && Math.floor((x-mx0)/3)===p.gap);
-    P(x,my-lift+1,1,2,gapCol?'#180C10':'#FFFBF2');     // enamel
-    if((x-mx0)%3===0&&x>mx0&&!gapCol) P(x,my-lift+1,1,2,'#D8CFC0');
-    P(x,my-lift+3,1,1,'#7A3038');                      // lower lip
-    P(x,my-lift+4,1,1,shd);                            // and its shadow on the chin
+    P(x,my-lift+1,1,1,gapCol?'#180C10':'#FFFBF2');     // the enamel: one row
+    P(x,my-lift+2,1,1,'#5E2733');                      // lower lip, deeper than the upper
+    P(x,my-lift+3,1,1,shd);                            // and its shadow on the chin
   }
+  /* The cheeks lift with it. Without this the mouth is a mark applied to a face; with it the
+     face is doing something. */
+  P(mx0-2,my-3,2,1,lit); P(mx1+1,my-3,2,1,lit);
 }
 
 /* One patient, not a wall of them. A grid of eight pairs was a chart; one face with something
