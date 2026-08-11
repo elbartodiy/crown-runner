@@ -112,8 +112,8 @@ const CFG = {
        enough that you had to lead it by more than the gap between sockets. The ranks
        now stand closer, march slower and step in less, and the shot is faster — the
        lead needed drops from about a third of a socket to a tenth of one. */
-    cols:5, colGap:85, marchSpan:46, marchSpeed:52, stepIn:52,
-    rowZ:[880,1360], breachZ:460, hitPad:14,
+    cols:5, colGap:85, marchSpan:46, marchSpeed:52, stepIn:31,
+    rowZ:[604,886], breachZ:357, hitPad:14,
     /* Glidewell supplies the fixtures, so implants were never counted.
        Crowns are now uncounted too. Running dry cost a remake and threw a banner
        across the screen mid-operation, and from the seat that does not read as
@@ -137,7 +137,7 @@ const CFG = {
      whistle itself is the second way in: at zero, surgery begins with exactly the number of
      extractions on the bench at that moment. Ten losses still ends the shift early. */
   magMax:   3,      // crowns the wand can carry
-  shotSpeed:2800,
+  shotSpeed:1650,
   /* The wand cuts the crown itself. It runs in the background while the scanner
      keeps working the next tooth, so the two halves of the pipeline overlap the
      way they do in the real lab. */
@@ -147,16 +147,16 @@ const CFG = {
      tolerance, longer reach — so the corridor gets easier to work exactly as it
      gets busier. Named like the product line. */
   scanner: [
-    { mk:'MK I',   time:0.85, mill:0.90, align:130, range:2000 },
-    { mk:'MK II',  time:0.68, mill:0.76, align:168, range:2300 },
-    { mk:'MK III', time:0.54, mill:0.64, align:206, range:2600 },
-    { mk:'MK IV',  time:0.42, mill:0.52, align:250, range:3000 },
+    { mk:'MK I',   time:0.85, mill:0.90, align:130, range:1180 },
+    { mk:'MK II',  time:0.68, mill:0.76, align:168, range:1355 },
+    { mk:'MK III', time:0.54, mill:0.64, align:206, range:1530 },
+    { mk:'MK IV',  time:0.42, mill:0.52, align:250, range:1765 },
   ],
   score: { scan:100, seat:300, match:200, save:50, pod:250, maxPod:600, comboCap:8 },
   /* 92, not 44. A hundred-and-twenty-second day reaches seven levels, so at 44 the wand only
      ever got to 694 and the top third of the range was decoration. 430 + 6*92 = 982, clamped
      to the ceiling — the close of business is now the fastest the instrument goes. */
-  speed: { base:430, perLevel:92, max:980, slow:0.55 },
+  speed: { base:253, perLevel:54, max:576, slow:0.55 },
   power: { drain:30, regen:14 },
   levelSec:19,      // six or seven across the day: the speed keeps climbing to the close
   /* Density ramps continuously across the shift rather than in level steps: the
@@ -191,7 +191,7 @@ const CX=VW/2;
    symmetric dashboard. */
 const PX=1225, HZ=520;
 const FOV=620;
-const SHIP_Z=210, FAR_Z=3000;
+const SHIP_Z=210, FAR_Z=1850;
 const NEAR_CULL=SHIP_Z*0.62;
 const BORE_R=300;                    // the puck's bore, in world units
 const PLANE_Y=90;
@@ -1030,8 +1030,8 @@ function decayOf(o){
    it home, so the scanner will not open the case — clinically the tooth is past
    restoring and becomes an extraction and an implant instead. The in-range brackets
    vanish at the same boundary, which teaches 'scan early'. */
-const scanNear=()=>SHIP_Z+900;
-const scanFar=()=>SHIP_Z+(G?tier().range:2000);
+const scanNear=()=>SHIP_Z+529;
+const scanFar=()=>SHIP_Z+(G?tier().range:1180);
 
 /* ── SPAWNING ───────────────────────────────────────────────────────────── */
 function freeX(z,gap){
@@ -1057,7 +1057,7 @@ function drillLane(){
    FAR_Z to the scan window alone is 3.2 seconds of watching a dot approach — dead time in
    the one place dead time costs the most. Spawned at 2600 they are tiny and dim on arrival
    (depth alpha covers the pop-in) and scannable in about a second and a half. */
-const DRILL_Z=2600;
+const DRILL_Z=1600;
 function spawnTooth(){
   const x=practising()?drillLane():freeX(FAR_Z,170);
   if(x===null) return;
@@ -2223,7 +2223,7 @@ function drawTooth(o){
     /* The ghost turns crimson and beats faster once the case is about to run out
        of runway, so a tooth is never quietly lost. Outline cells of the crown's own
        mask, every other pair skipped — a dashed contour in blocks. */
-    const urgent=mode==='PLAY'&&o.z<SHIP_Z+520;
+    const urgent=mode==='PLAY'&&o.z<SHIP_Z+300;
     const hov=Math.round(Math.sin(o.pulse*(urgent?2.4:0.8))*R*0.10/b)*b;
     const gcol=urgent?(Math.sin(T*18)>0?CFG.col.redHot:col):col;
     const PMG=pixMask('crown-'+o.crown.id, g=>partPath(g,o.crown),
