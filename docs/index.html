@@ -1030,7 +1030,7 @@ function decayOf(o){
    it home, so the scanner will not open the case — clinically the tooth is past
    restoring and becomes an extraction and an implant instead. The in-range brackets
    vanish at the same boundary, which teaches 'scan early'. */
-const scanNear=()=>SHIP_Z+529;
+const scanNear=()=>SHIP_Z+420;
 const scanFar=()=>SHIP_Z+(G?tier().range:1180);
 
 /* ── SPAWNING ───────────────────────────────────────────────────────────── */
@@ -1780,6 +1780,11 @@ function implantPath(c){
   c.closePath();
 }
 const partPath=(c,part)=>part&&part.fixture?implantPath(c):crownPath(c);
+/* A mask key must say WHICH SHAPE, not which product. CFG.crowns holds a crown with id
+   'HAHN' and surgery.implant is a FIXTURE also called 'HAHN' — keyed on the id alone the
+   cache handed the crown's silhouette to the fixture, so in surgery you appeared to be
+   firing a crown while you were in fact firing an implant. */
+const partKey=p=>(p&&p.fixture?'fix-':'crown-')+(p?p.id:'?');
 /* What a finished part actually occupies in its own unit space, measured rather than assumed.
    The blank it is cut from is sized off this, because the blank has to be the bigger of the
    two — it was drawn at a hand-picked half-width of 0.90 while the crown's curve reaches about
@@ -2226,7 +2231,7 @@ function drawTooth(o){
     const urgent=mode==='PLAY'&&o.z<SHIP_Z+300;
     const hov=Math.round(Math.sin(o.pulse*(urgent?2.4:0.8))*R*0.10/b)*b;
     const gcol=urgent?(Math.sin(T*18)>0?CFG.col.redHot:col):col;
-    const PMG=pixMask('crown-'+o.crown.id, g=>partPath(g,o.crown),
+    const PMG=pixMask(partKey(o.crown), g=>partPath(g,o.crown),
                       Math.max(6,Math.round(cells*0.9/2)*2), -1.14, 1.14, -1.12, 0.62);
     const gTop=Math.round((p.y-R*1.20+hov-PMG.h*b/2)/b)*b;
     const gox=Math.round((p.x-PMG.w*b/2)/b)*b;
@@ -2294,7 +2299,7 @@ function drawCrownObj(o,gl){
   const p=proj(o.x,PLANE_Y,o.z); if(p.s<0.05) return;
   const R=o.r*p.s, b=PIXEL_K;
   glow(p.x,p.y,R*1.8,o.crown.col,gl);
-  const PM=pixMask('crown-'+o.crown.id, g=>partPath(g,o.crown),
+  const PM=pixMask(partKey(o.crown), g=>partPath(g,o.crown),
                    crownCells(R), -1.14, 1.14, -1.12, 0.62);
   const sway=Math.round(Math.sin(o.spin)*1)*b;
   const topY=Math.round((p.y-PM.h*b/2)/b)*b;
@@ -2330,22 +2335,27 @@ function drawSocket(o){
     const pl=0.5+0.5*Math.sin(T*3.0);
     glow(p.x,p.y,R*2.3,need.col,(0.10+0.13*pl)*ctx.globalAlpha);
   }
-  withT(ctx,p.x,p.y,R,0,()=>{
-    socketPath(ctx);
-    const g=ctx.createLinearGradient(0,-1,0,1);
-    g.addColorStop(0,'#E4D8C4'); g.addColorStop(0.5,'#BFB199'); g.addColorStop(1,'#7C7160');
-    ctx.fillStyle=g; ctx.fill();
-    ctx.lineWidth=0.05; ctx.strokeStyle='rgba(12,12,14,0.8)'; ctx.stroke();
-    cavityPath(ctx); ctx.fillStyle='#17120F'; ctx.fill();
-    if(o.need==='crown'){                       // the fixture is seated
-      ctx.save(); ctx.scale(0.62,0.62); ctx.translate(0,0.25);
-      implantPath(ctx);
-      ctx.fillStyle=CFG.surgery.implant.col; ctx.fill();
-      ctx.lineWidth=0.09; ctx.strokeStyle='rgba(255,255,255,0.8)'; ctx.stroke();
-      threadLines(ctx);
-      ctx.restore();
-    }
+  /* Cells, like everything else in the bore. The socket, its cavity and the seated fixture
+     are three masks on the one block, so a rank of ten reads as ten of the same object
+     rather than ten smooth shapes at ten sizes. */
+  const b=PIXEL_K, cells=toothCells(R);
+  const SM=pixMask('socketW', socketPath, cells, -1.12, 1.12, -1.02, 1.04);
+  const topY=Math.round((p.y-SM.h*b/2)/b)*b;
+  maskOutline(SM,p.x,topY,b,'#0A0808');
+  drawMask(SM,p.x,topY,b,(gx,gy)=>{
+    const t=gy/SM.h;
+    return t<0.30?SOCK_TONES[0]:t<0.62?SOCK_TONES[1]:SOCK_TONES[2];
   });
+  const CM=pixMask('cavityW', cavityPath, Math.max(4,Math.round(cells*0.42/2)*2),
+                   -0.46, 0.46, -0.72, 0.68);
+  drawMask(CM,p.x,topY+Math.round(SM.h*0.16)*b,b,()=>'#17120F');
+  if(o.need==='crown'){                       // the fixture is seated
+    const IM=pixMask('fix-'+CFG.surgery.implant.id, g=>partPath(g,CFG.surgery.implant),
+                     Math.max(4,Math.round(cells*0.44/2)*2), -1.14, 1.14, -1.12, 0.62);
+    const iTop=topY+Math.round(SM.h*0.30)*b;
+    drawMask(IM,p.x,iTop,b,(gx,gy)=>
+      (gy/IM.h>0.30 && gy%3===0) ? '#282C32' : CFG.surgery.implant.col);
+  }
   /* No ring around the socket. Ten of them pulsing at once read as ten targets to deal with
      rather than as a row that is ready, and the thing they were marking is already said twice
      over: the near rank is drawn at full strength while the far one sits at 0.42, and a socket
@@ -2613,9 +2623,19 @@ function pixLine(x1,y1,x2,y2,b,col){
     ctx.fillRect(Math.round(sx+(ex-sx)*i/n)*b,Math.round(sy+(ey-sy)*i/n)*b,b,b);
 }
 function drawOnBoardMill(px,py,R){
-  const m=G.mill[0]; if(!m) return;
+  /* Either the job being cut, or — once the mill falls idle — the crown already aboard and
+     waiting to be fired. It used to vanish on the frame the cut finished, because the entry
+     was spliced out of G.mill the moment it completed: the crown you had just made was
+     visible for one frame and then the instrument looked empty while you were carrying it.
+     Nothing new is stored — what is parked IS the next round in the magazine, so the picture
+     cannot disagree with what the button will fire. */
+  const job=G.mill[0];
+  const crown=job?job.crown:G.mag[0];
+  if(!crown) return;
+  const prog=job?job.prog:1;
   const b=PIXEL_K;
-  const eject=clamp(m.prog/0.14,0,1);
+  // the arm still swings out for a fresh job; a crown already parked is simply out there
+  const eject=job?clamp(prog/0.14,0,1):1;
   const s=R*0.52;
   /* Out of the hatch and away to the flank, not up over the nose: parked on the
      centreline it capped the instrument and sat right where the teeth come in. */
@@ -2626,7 +2646,7 @@ function drawOnBoardMill(px,py,R){
      of stock on each side — which is what a blank is — so a crown and the taller, narrower
      fixture both work with no separate numbers. */
   const cells=Math.max(8,Math.round(s*2.28/b/2)*2);
-  const PM=pixMask('crown-'+m.crown.id, g=>partPath(g,m.crown), cells, -1.14,1.14,-1.12,0.62);
+  const PM=pixMask(partKey(crown), g=>partPath(g,crown), cells, -1.14,1.14,-1.12,0.62);
   const bw=PM.w+4, bh=PM.h+4;
   const ox=Math.round((cx-bw*b/2)/b)*b, topY=Math.round((cy-bh*b/2)/b)*b;
 
@@ -2637,7 +2657,7 @@ function drawOnBoardMill(px,py,R){
 
   /* The cut is a row index. Above it the finished part shows; below it raw stock still
      stands. One number, both halves — they cannot disagree. */
-  const cutRow=Math.round(bh*clamp(m.prog,0,1));
+  const cutRow=Math.round(bh*clamp(prog,0,1));
   for(let gy=cutRow;gy<bh;gy++)
     for(let gx=0;gx<bw;gx++){
       if((gy===cutRow&&cutRow>0?false:gy===0||gy===bh-1)&&(gx===0||gx===bw-1)) continue;
@@ -2649,14 +2669,14 @@ function drawOnBoardMill(px,py,R){
   const crownCut=Math.round((topY+cutRow*b-crTop)/b);
   drawMask(PM,cx,crTop,b,(gx,gy)=>{
     if(gy>=crownCut) return null;
-    if(m.crown.fixture && gy/PM.h>0.30 && gy%3===0) return '#282C32';
+    if(crown.fixture && gy/PM.h>0.30 && gy%3===0) return '#282C32';
     const t=gy/PM.h;
-    return t<0.26?'#FFF6E6':t<0.72?m.crown.col:'#6A6A6A';
+    return t<0.26?'#FFF6E6':t<0.72?crown.col:'#6A6A6A';
   });
 
   /* The cutter is a plus of cells riding the cut line. It does not rotate — the traverse
      and the sparks carry the spinning; turning the sprite would just break its grid. */
-  if(m.prog<1&&eject>=1){
+  if(prog<1&&eject>=1){
     const bx=Math.round((cx+(bw*b/2)*0.92*Math.sin(T*8.5))/b)*b;
     const cutY=topY+cutRow*b;
     ctx.fillStyle='#DCE2EA';
@@ -2670,10 +2690,10 @@ function drawOnBoardMill(px,py,R){
   }
 
   // progress collar + the shade being cut
-  pixArc(cx,cy,s*1.52,b,m.crown.col,clamp(m.prog,0,1));
+  pixArc(cx,cy,s*1.52,b,crown.col,clamp(prog,0,1));
   if(eject>=1)
-    txt(m.crown.label.toUpperCase()+' '+m.crown.shade,cx,cy+s*2.15,
-        {size:Math.max(11,Math.round(R*0.19)),weight:800,col:m.crown.col,
+    txt(crown.label.toUpperCase()+' '+crown.shade,cx,cy+s*2.15,
+        {size:Math.max(11,Math.round(R*0.19)),weight:800,col:crown.col,
          align:'center',ls:'1px',font:F_MONO});
 }
 
