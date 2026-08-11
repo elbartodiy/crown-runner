@@ -1434,17 +1434,19 @@ function update(dt){
   if(G.podIn<=0&&G.closing<=0){ spawnPod(); G.podIn=rnd(13,19); }
   }
 
-  /* scanning: hold the button with a tooth aligned ahead. A full magazine
-     blocks acquisition rather than wasting the milled crown. */
+  /* Scanning: hold the button with a tooth aligned ahead. Nothing gates it. A full magazine
+     used to block acquisition — the reasoning was that the milled crown would otherwise be
+     discarded — but from the seat that is the instrument refusing to do its one job because
+     you are carrying something, which is not a rule anybody reads off the screen. The case is
+     protected at the other end instead: the mill HOLDS a finished crown until a slot frees
+     (see the mill loop below), so nothing is lost and nothing is barred. */
   if(implanting()){
     surgeryTick(dt);
     if(mode!=='PLAY') return;          // a breach can end the round outright
   } else {
-  const roomy = G.mag.length+G.mill.length < CFG.magMax;
   const prev=G.target;
-  G.target = Input.scan && roomy ? bestTarget() : null;
+  G.target = Input.scan ? bestTarget() : null;
   if(G.target&&G.target!==prev) SFX.lock();
-  if(!roomy && Input.scan && G.hintT<=0) hint('MILL BUSY  —  FIRE TO CLEAR',1.2);
   scanHumOn(!!G.target, G.target?G.target.scan:0);
   for(const o of objs){
     if(o.kind!=='tooth'||o.state!=='broken') continue;
@@ -1470,10 +1472,14 @@ function update(dt){
   /* The mill turns whatever the scanner sent it, on its own clock. */
   for(let i=G.mill.length-1;i>=0;i--){
     const m=G.mill[i];
-    m.prog+=dt/tier().mill;
-    if(m.prog>=1){
+    m.prog=Math.min(1,m.prog+dt/tier().mill);
+    /* A finished crown waits in the mill until a slot frees, rather than being thrown away.
+       It used to be spliced out on completion and silently dropped if the magazine was full —
+       which is what the old scan block existed to prevent. Holding it here is what lets the
+       scanner run unconditionally: the case is never lost, it just queues. */
+    if(m.prog>=1 && G.mag.length<CFG.magMax){
       G.mill.splice(i,1);
-      if(G.mag.length<CFG.magMax){ G.mag.push(m.crown); SFX.dock(); flash(m.crown.col); }
+      G.mag.push(m.crown); SFX.dock(); flash(m.crown.col);
     }
   }
 
