@@ -4020,7 +4020,13 @@ const tutBusy=()=>
    meant four seconds of empty bore at best and an endless one at worst. This one is
    placed inside scanning range straight away and never refuses. */
 function tutSendTooth(){
-  const z=SHIP_Z+1700;
+  /* Just outside the scan window, not at the far end of the bore. The first beat only fires
+     once the tooth is close enough to scan, and the panel's scrim is up from the first frame —
+     so starting it 1700 out meant pressing START and then watching a near-black screen with a
+     caption on it for four and a half seconds before Jim said anything. That is the cabinet's
+     first impression, and it was of a game that had not loaded. Half a second now: long enough
+     to see something arrive, short enough that nobody wonders whether it is broken. */
+  const z=SHIP_Z+1230;
   objs.push({kind:'tooth',state:'broken',crown:null,x:rnd(-90,90),z,pz:z,
              r:44,scan:0,pulse:0,done:false,flake:0,
              chip:[rnd(0,6.28),rnd(0,6.28),rnd(0,6.28),rnd(0,6.28)]});
