@@ -957,7 +957,13 @@ function newGame(){
       speed:CFG.speed.base, thrust:1, power:100, slowing:false,
       tier:0, podIn:9,
       mag:[], mill:[], target:null, designFlash:0, spawnIn:0.6,
-      hint:'HOLD  SCAN  ON  A  CRACKED  TOOTH', hintT:4,
+      /* No hint by default. This carried a four-second line that nobody asked for, and on the
+         lesson it landed on top of the dark panel screen before Jim had said anything — then
+         the beat's own instruction replaced it, so the opening was two different captions on
+         a black screen. Every path that wants a line sets one: the shift and the taught entry
+         say SCAN THE CRACKED TEETH, each drill states its own, and a lesson beat carries its
+         `hold` text. */
+      hint:'', hintT:0,
       flash:0, flashCol:CFG.col.good, banner:null, bannerCol:CFG.col.white, bannerT:0,
       scans:0, seats:0, matches:0, lost:0, hits:0, pods:0 };
 }
@@ -3947,7 +3953,12 @@ const TUTOR=[
  {tgt:'tooth', zoom:1.7,
   text:['THIS TOOTH IS CRACKED.','HOLD  {SCAN}  TO SCAN IT.'],
   tooth:true, hold:'HOLD  {SCAN}  ON THE CRACKED TOOTH',
-  at:()=>{const t=tutTooth(); return t&&t.state==='broken'&&t.z<scanFar();},
+  /* Fires on the first frame. It used to wait for the tooth in the bore to reach scanning
+     range, which meant START was followed by a near-black screen with a caption on it while
+     nothing happened. The wait bought nothing: what the player looks at is the plate's big
+     schematic tooth, which does not move and is not that object, and by the time the line has
+     finished typing the real one is well inside the window anyway. */
+  at:()=>true,
   done:()=>G.scans>0, diagram:'scan', drillAfter:'scan'},
  /* One beat, not two. The file and the cut were separate screens saying consecutive halves of
     the same sentence, and the lesson is meant to be short — so the ones and zeros are now the
