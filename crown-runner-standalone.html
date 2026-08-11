@@ -75,7 +75,7 @@ const CFG = {
     paper:'#F4F1E8', paper2:'#E7E2D5', ink:'#1E1E1E', inkDim:'#6E6A60',
     /* wet/blueLt pulled toward the cyan the milling unit actually glows in the title art */
     g0:'#0A0A0B', g1:'#15161A', g2:'#1E2025', steel:'#7A808A',
-    bone:'#F2ECDF', boneDim:'#9A9184', chalk:'#FFFFFF',
+    bone:'#F2ECDF', boneDim:'#9A9184', chalk:'#FFF6E6',
     score:'#FFCC33', white:'#F2ECDF', dim:'#8A8377',
     good:'#CFC6B2', bad:'#FF3B57',
     wet:'#5FE0EC', wetDim:'#1E5F70',
@@ -1602,7 +1602,7 @@ function update(dt){
             banner('SCANNER MAXED  +'+CFG.score.maxPod*G.combo,CFG.col.score);
           }
           SFX.upgrade(); flash(CFG.col.white); scrParts(o.x,CFG.col.red,26,520);
-          pixBurst(proj(o.x,PLANE_Y,SHIP_Z).x,proj(o.x,PLANE_Y,SHIP_Z).y,'#FFFFFF',1.2);
+          pixBurst(proj(o.x,PLANE_Y,SHIP_Z).x,proj(o.x,PLANE_Y,SHIP_Z).y,'#FFF6E6',1.2);
         }
       } else if(o.kind==='tooth'&&o.state==='prepped'){
         /* A tooth you opened and did not finish is still a tooth the patient has lost, so it
@@ -2243,7 +2243,7 @@ function drawCrownObj(o,gl){
     partPath(ctx,o.crown);
     ctx.fillStyle=grad('crown'+o.crown.id,()=>{
       const g=ctx.createLinearGradient(0,-1,0,0.6);
-      g.addColorStop(0,'#FFFFFF'); g.addColorStop(0.5,o.crown.col); g.addColorStop(1,'#5A5A5A');
+      g.addColorStop(0,'#FFF6E6'); g.addColorStop(0.5,o.crown.col); g.addColorStop(1,'#5A5A5A');
       return g; });
     ctx.fill();
     ctx.lineWidth=0.07; ctx.strokeStyle='rgba(255,255,255,0.8)'; ctx.stroke();
@@ -2305,7 +2305,7 @@ function drawPod(o){
   const R=o.r*p.s;
   ctx.save(); ctx.globalAlpha=clamp((1-o.z/FAR_Z)*1.6,0,1);
   // halo marks it as a pickup
-  glow(p.x,p.y,R*2.0,'#FFFFFF',0.32);
+  glow(p.x,p.y,R*2.0,'#FFF6E6',0.32);
   // the mark, breathing slightly so it never reads as scenery
   const puff=1+Math.sin(o.spin*1.6)*0.05;
   gwLogo(p.x,p.y,R*0.80*puff);
@@ -2363,10 +2363,16 @@ function drawWandSprite(px,py,WW,{bank=0,scanning=false,milling=false,slowing=fa
     else            f=0.937-((t-0.90)/0.10)*0.500;
     return f*hwMax;
   };
-    const ox=px-WW*b/2+bank*b, oy=py-WH*b*0.52;
+  /* The origin snaps to the grid, and a cell is exactly b×b. It used to be ceil(b)+1 from a
+     fractional origin — a pixel of overlap smearing the seams shut — which put the single most
+     looked-at object in the game on 4px blocks in a 3px world. With the origin a multiple of b
+     and gx*b always a multiple of b, every cell lands flush and there are no seams to smear:
+     the +1 was curing a symptom of the unsnapped origin. The wand now moves in whole blocks,
+     which is what a sprite on a grid does. */
+  const ox=Math.round((px-WW*b/2+bank*b)/b)*b, oy=Math.round((py-WH*b*0.52)/b)*b;
   const cell=(gx,gy,col)=>{
     ctx.fillStyle=col;
-    ctx.fillRect(Math.round(ox+gx*b),Math.round(oy+gy*b),Math.ceil(b)+1,Math.ceil(b)+1);
+    ctx.fillRect(ox+gx*b,oy+gy*b,b,b);
   };
 
   const bc = scanning?CFG.col.score : slowing?CFG.col.blueLt : CFG.col.blue;
@@ -2397,7 +2403,7 @@ function drawWandSprite(px,py,WW,{bank=0,scanning=false,milling=false,slowing=fa
       const cx=gx-(WW-1)/2;
       let col;
       const e=Math.max(1,WW*0.055);
-      if(cx<-hw+e)        col='#FFFFFF';
+      if(cx<-hw+e)        col='#FFF6E6';
       else if(cx<-hw+e*2.4) col='#E7ECF2';
       else if(cx> hw-e*1.4) col='#7C858F';
       else                  col='#B9C2CC';
@@ -2411,7 +2417,7 @@ function drawWandSprite(px,py,WW,{bank=0,scanning=false,milling=false,slowing=fa
           ? ((gy>=HAT[0]+2&&gy<=HAT[0]+3&&Math.abs(cx)<=fx*0.6) ? CFG.col.score : '#0E1014')
           : '#1E2228';
       if(gy>=BTN[0]&&gy<=BTN[1]&&Math.abs(cx)<=fx)
-        col = (gy<=BTN[0]+1&&cx<=-0.5) ? '#FFFFFF' : bc;
+        col = (gy<=BTN[0]+1&&cx<=-0.5) ? '#FFF6E6' : bc;
       cell(gx,gy,col);
     }
   }
@@ -2591,7 +2597,7 @@ function drawOnBoardMill(px,py,R){
     partPath(ctx,m.crown);
     ctx.fillStyle=grad('crown'+m.crown.id,()=>{
       const g=ctx.createLinearGradient(0,-1,0,0.6);
-      g.addColorStop(0,'#FFFFFF'); g.addColorStop(0.5,m.crown.col); g.addColorStop(1,'#6A6A6A');
+      g.addColorStop(0,'#FFF6E6'); g.addColorStop(0.5,m.crown.col); g.addColorStop(1,'#6A6A6A');
       return g; });
     ctx.fill();
     ctx.lineWidth=0.07; ctx.strokeStyle='rgba(255,255,255,0.85)'; ctx.stroke();
@@ -2614,7 +2620,7 @@ function drawOnBoardMill(px,py,R){
     if(Math.random()<0.65){
       const a=rnd(-2.5,-0.65), v=rnd(140,420);
       parts.push({x:bx,y:cut,vx:Math.cos(a)*v,vy:Math.sin(a)*v,
-                  life:rnd(0.18,0.42),max:0.42,col:'#FFFFFF',sz:rnd(1.5,3.6)});
+                  life:rnd(0.18,0.42),max:0.42,col:'#FFF6E6',sz:rnd(1.5,3.6)});
     }
   }
 
@@ -2831,6 +2837,8 @@ function fitPix(str,maxW,size,track){
   return out+'.';
 }
 function pixWidth(str,gen,track){
+  // the same block-quantisation as pixText, or measure and draw disagree
+  track=Math.round(track/PIXEL_K)*PIXEL_K;
   let w=0;
   for(const ch of str) w+=(glyphGen(ch,gen).w+1)*PIXEL_K+track;
   return Math.max(0,w-track);
@@ -2840,8 +2848,16 @@ function pixWidth(str,gen,track){
 function pixText(str,x,y,gen,col,track){
   ctx.fillStyle=col;
   const k=PIXEL_K, h=GLYPH_H*(1<<gen);
-  let cx=Math.round(x);
-  const top=Math.round(y-h*k);
+  /* Everything here lands on the k-grid or none of it does. The origin used to round to the
+     nearest CSS pixel, and the tracking values are set in the callers as 1..8px — neither is
+     a multiple of k, so the first glyph started off-phase and every glyph after it drifted
+     further. Two labels side by side sat on different lattices and shimmered against each
+     other. The origin snaps to k, and the tracking quantises to whole blocks — the SAME
+     quantisation lives in pixWidth, or centred text would measure one width and draw
+     another. */
+  track=Math.round(track/k)*k;
+  let cx=Math.round(x/k)*k;
+  const top=Math.round((y-h*k)/k)*k;
   for(const ch of str){
     const g=glyphGen(ch,gen);
     for(let r=0;r<g.rows.length;r++){
@@ -2861,13 +2877,17 @@ function pixText(str,x,y,gen,col,track){
 function pixRing(cx,cy,r,b,col,dashOn,dashOff,phase){
   b=Math.max(2,Math.round(b));
   const rb=Math.max(1,Math.round(r/b));
-  const ox=Math.round(cx), oy=Math.round(cy);
+  /* The centre snaps to the block grid, and the -b/2 that used to centre each cell on the
+     circle point is gone: it shifted every cell by half a block, which is the one offset a
+     block grid cannot express. The whole ring sits half a block up-left of where it did,
+     invisibly, and every cell now shares the lattice with the rest of the frame. */
+  const ox=Math.round(cx/b)*b, oy=Math.round(cy/b)*b;
   ctx.fillStyle=col;
   let x=rb, y=0, err=1-rb, n=Math.round(phase||0);
   const put=(gx,gy)=>{
     if(dashOn){ const m=((n++)%(dashOn+dashOff)+dashOn+dashOff)%(dashOn+dashOff);
                 if(m>=dashOn) return; } else n++;
-    ctx.fillRect(Math.round(ox+gx*b-b/2),Math.round(oy+gy*b-b/2),b,b);
+    ctx.fillRect(ox+gx*b,oy+gy*b,b,b);
   };
   while(x>=y){
     put( x, y); put( y, x); put(-y, x); put(-x, y);
@@ -2958,7 +2978,7 @@ function drawPoster(){
     const tw=(T%3.1)/3.1;
     if(tw<0.14){
       const kk=Math.sin(tw/0.14*Math.PI), [cxx,cyy]=at(A.crown);
-      glow(cxx,cyy,VH*0.05*kk,'#FFFFFF',0.8*kk*step);
+      glow(cxx,cyy,VH*0.05*kk,'#FFF6E6',0.8*kk*step);
       ctx.fillStyle='rgba(255,255,255,'+(0.92*kk*step).toFixed(2)+')';
       const r0=Math.round(VH*0.028*kk/PIXEL_K)*PIXEL_K;
       ctx.fillRect(Math.round(cxx-r0),Math.round(cyy-PIXEL_K/2),r0*2,PIXEL_K);
@@ -2982,7 +3002,7 @@ function gwLogo(x,y,s){
   ctx.save(); ctx.translate(x,y); ctx.scale(s,s);
   ctx.beginPath(); ctx.rect(-1,-1,2,2);
   ctx.fillStyle=CFG.col.red; ctx.fill();
-  ctx.strokeStyle='#FFFFFF'; ctx.lineWidth=0.14; ctx.lineCap='butt';
+  ctx.strokeStyle='#FFF6E6'; ctx.lineWidth=0.14; ctx.lineCap='butt';
   ctx.beginPath(); ctx.arc(0,0,0.72,-Math.PI/2,Math.PI/3,true); ctx.stroke();
   ctx.beginPath(); ctx.moveTo(0,-0.72); ctx.lineTo(0.78,-0.72); ctx.stroke();
   ctx.lineWidth=0.11;
@@ -3076,13 +3096,13 @@ function drawSlip(){
      logo — two blocks of air at this block size is a collision, not a gap. */
   ctx.fillStyle=R.red; ctx.fillRect(S.x,S.y,S.w,84);
   gwLogo(S.x+38,S.y+32,18);
-  txt('LAB CASE SLIP',S.x+72,S.y+42,{size:20,weight:800,col:'#FFFFFF',ls:'3px',font:F_MONO});
+  txt('LAB CASE SLIP',S.x+72,S.y+42,{size:20,weight:800,col:'#FFF6E6',ls:'3px',font:F_MONO});
   const imp=implanting();
   txt(imp?'STAGE 2':(practising()?'TRAINING':'STAGE 1'),S.x+20,S.y+80,
       {size:13,weight:700,col:'rgba(255,255,255,0.85)',ls:'2px',font:F_MONO});
   if(imp){
     txt(liveSockets(0)+liveSockets(1)+' LEFT',S.x+S.w-20,S.y+80,
-        {size:14,weight:800,col:'#FFFFFF',align:'right',ls:'2px',font:F_MONO});
+        {size:14,weight:800,col:'#FFF6E6',align:'right',ls:'2px',font:F_MONO});
   } else if(practising()){
     /* No surgery counter in the free round. A backlog that cannot fill is a threat the
        round does not actually carry, and reading 0/10 all the way through taught nothing. */
@@ -3090,7 +3110,7 @@ function drawSlip(){
     /* Every tooth let go shows up here as a fixture waiting to be placed, so the
        queue is a picture of the backlog and not just a number. */
     txt(Math.min(G.implantQ,CFG.implantsToAdvance)+'/'+CFG.implantsToAdvance,S.x+S.w-20,S.y+80,
-        {size:14,weight:800,col:'#FFFFFF',align:'right',ls:'2px',font:F_MONO});
+        {size:14,weight:800,col:'#FFF6E6',align:'right',ls:'2px',font:F_MONO});
     // the row along the foot of the screen carries this now
   }
   rule(S.x+18,114,S.x+S.w-18,'rgba(235,0,69,0.55)',2);
@@ -3306,7 +3326,7 @@ function drawSponsorPlate(){
     ctx.drawImage(LOGO,x+w/2-lw/2,y+18,lw,lh);
     ctx.restore();
   } else {
-    txt('GLIDEWELL',PX,y+56,{size:34,weight:800,col:'#FFFFFF',align:'center',ls:'8px'});
+    txt('GLIDEWELL',PX,y+56,{size:34,weight:800,col:'#FFF6E6',align:'center',ls:'8px'});
   }
   txt('FREE IMPLANTS',PX,y+156,
       {size:48,weight:800,col:CFG.col.ink,align:'center',ls:'6px'});
@@ -3353,19 +3373,20 @@ function inkOn(col){
     return v<=0.03928?v/12.92:Math.pow((v+0.055)/1.055,2.4);
   });
   const L=0.2126*lin[0]+0.7152*lin[1]+0.0722*lin[2];
-  return L>0.40 ? '#101014' : '#FFFFFF';
+  return L>0.40 ? '#101014' : '#FFF6E6';
 }
 /* A filled disc on the same grid as everything else. Left as a smooth arc it was a
    vector circle wrapped around a pixel letter, which is what made the icons dirty
    however clean the glyph was. */
 function pixDisc(cx,cy,r,b,col){
   b=Math.max(2,Math.round(b));
-  const rb=Math.max(1,Math.round(r/b)), ox=Math.round(cx), oy=Math.round(cy);
+  // same lattice discipline as pixRing: snapped centre, exact cells, no half-block offset
+  const rb=Math.max(1,Math.round(r/b)), ox=Math.round(cx/b)*b, oy=Math.round(cy/b)*b;
   ctx.fillStyle=col;
   for(let gy=-rb;gy<=rb;gy++){
     const half=Math.round(Math.sqrt(Math.max(0,rb*rb-gy*gy)));
     for(let gx=-half;gx<=half;gx++)
-      ctx.fillRect(Math.round(ox+gx*b-b/2),Math.round(oy+gy*b-b/2),b,b);
+      ctx.fillRect(ox+gx*b,oy+gy*b,b,b);
   }
 }
 function icoButton(cx,cy,r,label,col){
@@ -4435,7 +4456,7 @@ function recapCell(kind,cx,cy,R,part){
     ctx.fillStyle='rgba(10,8,8,0.55)';
     ctx.fillRect(ox,ct+CM.h*B,CM.w*B,B);            // the margin, one block, nothing else
     const pl=0.5+0.5*Math.sin(T*4);
-    glow(cx,cy,R*1.4,'#FFFFFF',0.12+0.10*pl);
+    glow(cx,cy,R*1.4,'#FFF6E6',0.12+0.10*pl);
   }
 }
 function drawDiagRecap(){
@@ -4656,7 +4677,7 @@ function drawDiagMill(){
   ctx.globalAlpha=1;
   ctx.restore();
   // the glass, one flat highlight along the top edge
-  ctx.globalAlpha=0.08; box(wx,wy,WW,B*3,'#FFFFFF'); ctx.globalAlpha=1;
+  ctx.globalAlpha=0.08; box(wx,wy,WW,B*3,'#FFF6E6'); ctx.globalAlpha=1;
   });
   diagFoot('CUTTING',p);
 }
@@ -4754,7 +4775,7 @@ function drawDiagSeat(){
   drawMask(CM,cx,crownTop,B,()=>CFG.col.bone);
 
   if(held){
-    glow(cx,marginY,B*22,'#FFFFFF',0.18);
+    glow(cx,marginY,B*22,'#FFF6E6',0.18);
     ctx.fillStyle='rgba(95,224,236,0.85)'; ctx.fillRect(D.x+36,marginY,42,k);
     txt('MARGIN CLOSED',D.x+87,marginY+7,
         {size:15,weight:800,col:CFG.col.wet,ls:'3px',font:F_MONO,max:222});
@@ -4895,7 +4916,7 @@ function castPortrait(img,x,y,name,flip){
     ctx.fillStyle='rgba(0,0,0,0.45)'; ctx.fillRect(px2+3,py2+3,pw,ph);
     ctx.fillStyle=CFG.col.red; ctx.fillRect(px2,py2,pw,ph);
     txt(name,px2+pw/2,py2+ph/2+7,
-        {size:16,weight:800,col:'#FFFFFF',align:'center',ls:'4px',font:F_MONO,max:pw-24});
+        {size:16,weight:800,col:'#FFF6E6',align:'center',ls:'4px',font:F_MONO,max:pw-24});
   }
   return {w,h};
 }
@@ -4954,7 +4975,7 @@ function drawJim(){
   // a nameplate, so a visitor knows who is talking to them
   const plateW=Math.min(w,150);
   ctx.fillStyle=CFG.col.red; ctx.fillRect(x,y-28,plateW,26);
-  txt('JIM',x+12,y-9,{size:16,weight:800,col:'#FFFFFF',ls:'4px',font:F_MONO});
+  txt('JIM',x+12,y-9,{size:16,weight:800,col:'#FFF6E6',ls:'4px',font:F_MONO});
   /* The line to the left of him, right-aligned into his shoulder, on paper like every other thing
      anybody says in this game. */
   const lw=Math.min(700,pixWidth(jim.line,genFor(18),2)+48);
@@ -5053,7 +5074,7 @@ function drawPatient(ox,oy,u,p,after,happy){
   // ── eyes, brows, and glasses over them ──
   const ey=hy+15;
   P(23,ey-4,7,2,p.hair); P(34,ey-4,7,2,p.hair);        // brows
-  P(23,ey,6,6,'#FFFFFF'); P(35,ey,6,6,'#FFFFFF');
+  P(23,ey,6,6,'#FFF6E6'); P(35,ey,6,6,'#FFF6E6');
   P(25,ey+1,3,4,K);       P(37,ey+1,3,4,K);             // pupils
   P(23,ey,6,2,K);         P(35,ey,6,2,K);              // lids
   if(p.glasses){
@@ -5144,7 +5165,7 @@ function drawTestimonial(){
   ctx.strokeStyle=CFG.col.ink; ctx.lineWidth=4; ctx.strokeRect(fx,cy,fw,cardH);
   ctx.fillStyle=CFG.col.red; ctx.fillRect(fx,cy,fw,54);
   txt('PATIENT',fx+fw/2,cy+38,
-      {size:19,weight:800,col:'#FFFFFF',align:'center',ls:'5px',font:F_MONO});
+      {size:19,weight:800,col:'#FFF6E6',align:'center',ls:'5px',font:F_MONO});
   // the face sits on its own panel inside the card, the way a photo would
   const fy=cy+84;
   ctx.fillStyle='rgba(20,22,28,0.92)'; ctx.fillRect(fx+40,fy-10,pw+16,ph+20);
@@ -5156,7 +5177,7 @@ function drawTestimonial(){
   if(tw<0.16){
     const kk=Math.sin(tw/0.16*Math.PI);
     const gx=fx+48+32*u, gy=fy+40*u;      // the teeth run x 22..42, y 36..42 in art pixels
-    glow(gx,gy,58*kk,'#FFFFFF',0.85*kk);
+    glow(gx,gy,58*kk,'#FFF6E6',0.85*kk);
     ctx.fillStyle='rgba(255,255,255,'+(0.95*kk).toFixed(2)+')';
     const r0=Math.round(30*kk/PIXEL_K)*PIXEL_K;
     ctx.fillRect(Math.round(gx-r0),Math.round(gy-PIXEL_K/2),r0*2,PIXEL_K);
@@ -5177,7 +5198,7 @@ function drawTestimonial(){
   ctx.strokeStyle=CFG.col.ink; ctx.lineWidth=4; ctx.strokeRect(qx,qy,qw,cardH);
   ctx.fillStyle=CFG.col.red; ctx.fillRect(qx,qy,qw,54);
   txt('IN THEIR WORDS',qx+34,qy+38,
-      {size:19,weight:800,col:'#FFFFFF',ls:'5px',font:F_MONO});
+      {size:19,weight:800,col:'#FFF6E6',ls:'5px',font:F_MONO});
   const LN=54, top=qy+150;
   quote.forEach((l,i)=>
     txt(l,qx+34,top+i*LN,
