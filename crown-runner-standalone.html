@@ -1405,7 +1405,14 @@ function update(dt){
        is on, and a seated tooth sets done itself. */
     const id=G.practice.id;
     const alive=objs.filter(o=>o.kind==='tooth'&&!o.dead&&!o.done);
-    const unfinished = id==='scan' ? alive.some(o=>o.state==='broken') : alive.length>0;
+    /* The next tooth waits on the SCAN, not on the crown being seated. Holding it back until
+       the case was finished meant that carrying a milled crown stopped new teeth arriving —
+       from the seat it looks exactly like the scanner refusing to work while something is
+       aboard. It is also the wrong lesson: the whole point of the pipeline is that the
+       scanner takes the next tooth while the mill is still cutting the last one. The seat
+       drill is the exception, because there the arriving tooth IS the work. */
+    const unfinished = id==='seat' ? alive.some(o=>o.state==='prepped')
+                                   : alive.some(o=>o.state==='broken');
     /* …and never more than two on the glass at once. Releasing on the scan alone let a third
        arrive while two scanned ones were still coasting out, which is the clutter this mode
        is supposed to be free of: one to work, one leaving. */
