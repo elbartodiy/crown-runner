@@ -5258,32 +5258,59 @@ function drawPatient(ox,oy,u,p,after,happy){
     if(dn<hw) { P(CXC-hw-1,y+1,hw-dn+1,1,K); P(CXC+dn,y+1,hw-dn+1,1,K); }
   }
 
-  // ── hair ──
+  /* ── hair ─────────────────────────────────────────────────────────────
+     Hair sits ON the skull, so it is wider than the skull and starts above it. Every version
+     before this was painted inside the head's own silhouette, which is why it read as a cap
+     stuck to the top of an egg rather than as hair. Each style states how much volume it
+     carries and how far above the crown it rises; the profile eases from full volume at the
+     crown to nothing at the hairline, so it meets the face instead of ending in a step. It
+     carries its own keyline, because it is now outside the head's. */
   const S=p.style;
+  const HAIR_VOL={0:1, 1:2, 2:3, 3:2, 4:2, 5:0}[S]||0;
+  const HAIR_TOP={0:2, 1:3, 2:4, 3:3, 4:3, 5:0}[S]||0;
   if(S===5){
-    // bald: the crown catches the light, and that IS the hairstyle
+    // bald: the crown takes the light, and that IS the hairstyle
     for(let y=PT_TOP;y<PT_TOP+5;y++) P(CXC-HW(y)+2,y,5,1,lit);
   } else {
-    const capTo = S===2 ? PT_TOP+13 : PT_TOP+10;
-    for(let y=PT_TOP;y<capTo;y++){
-      const hw=HW(y)+(S===2?1:0);
+    const capTo = PT_TOP + (S===2?13:10);
+    const hy0 = PT_TOP - HAIR_TOP;
+    const hairHW=(y)=>{
+      const base = y>=PT_TOP ? HW(y)
+                             : Math.max(3, HW(PT_TOP) - (PT_TOP-y)*3);
+      const t = clamp((capTo-y)/(capTo-hy0),0,1);
+      return base + Math.round(HAIR_VOL*Math.sqrt(t));
+    };
+    for(let y=hy0;y<capTo;y++){
+      const hw=hairHW(y);
+      P(CXC-hw-1,y,1,1,K); P(CXC+hw,y,1,1,K);        // its own keyline
       P(CXC-hw,y,hw*2,1,p.hair);
-      P(CXC+hw-3,y,3,1,hairDk);                 // the far side of the head
+      P(CXC+hw-3,y,3,1,hairDk);                       // the far side of the head
+      const up=hairHW(y-1);
+      if(y>hy0&&up<hw){ P(CXC-hw-1,y-1,hw-up+1,1,K); P(CXC+up,y-1,hw-up+1,1,K); }
     }
-    // a hairline that dips at the temples instead of cutting straight across
-    P(CXC-HW(capTo)+3,capTo,2,1,p.hair);
-    P(CXC+HW(capTo)-5,capTo,2,1,p.hair);
-    P(CXC-HW(capTo),capTo,3,1,p.hair);
-    P(CXC+HW(capTo)-3,capTo,3,1,p.hair);
-    P(CXC-HW(PT_TOP)+2,PT_TOP+1,4,1,'rgba(255,255,255,0.12)');   // one highlight, upper left
-    if(S===1||S===3){                            // sideburns / length down the sides
-      const to = S===3 ? chin-2 : capTo+4;
+    P(CXC-hairHW(hy0),hy0-1,hairHW(hy0)*2,1,K);       // the top of the head
+    P(CXC-hairHW(hy0)+2,hy0+1,4,1,'rgba(255,255,255,0.14)');   // one highlight, upper left
+    /* The hairline. Men recede at the temples and keep a little in the middle; women carry a
+       fringe across. Two shapes is enough — the point is that it is not a ruled line. */
+    const hwc=HW(capTo);
+    if(S===0||S===1){
+      P(CXC-hwc,capTo,4,1,p.hair); P(CXC+hwc-4,capTo,4,1,p.hair);
+      P(CXC-3,capTo,6,1,p.hair);
+    } else {
+      P(CXC-hwc+1,capTo,hwc*2-2,1,p.hair);
+      P(CXC-hwc+2,capTo+1,5,1,p.hair); P(CXC+hwc-7,capTo+1,5,1,p.hair);
+    }
+    if(S===1||S===3){                                  // sideburns, or length down the sides
+      const to = S===3 ? chin-2 : capTo+5;
       for(let y=capTo;y<to;y++){ const hw=HW(y);
         P(CXC-hw-(S===3?1:0),y,S===3?4:2,1,p.hair);
         P(CXC+hw-(S===3?3:2),y,S===3?4:2,1,S===3?hairDk:p.hair); }
     }
-    if(S===4){ P(CXC-4,PT_TOP-5,8,5,p.hair); P(CXC-4,PT_TOP-5,8,1,K); }   // bun
-    P(CXC-HW(PT_TOP)-1,PT_TOP-1,HW(PT_TOP)*2+2,1,K);
+    if(S===4){                                          // a bun, above the volume not inside it
+      const bw=5, by=hy0-4;
+      P(CXC-bw,by,bw*2,4,p.hair); P(CXC-bw-1,by-1,bw*2+2,1,K);
+      P(CXC-bw-1,by,1,4,K); P(CXC+bw,by,1,4,K);
+    }
   }
 
   /* ── eyes ──────────────────────────────────────────────────────────────
@@ -5353,9 +5380,14 @@ function drawPatient(ox,oy,u,p,after,happy){
 
    The quote is the patient's, in the paper language the rest of the game already speaks — the
    case slip, the sponsor plate — rather than as a floating caption. */
-const NAMES=['MAYA','DEREK','PRIYA','TOMAS','ANNA','KWAME','LENA','HIRO','SOFIA','OMAR',
-             'GRACE','MATEO','NINA','JONAS','AISHA','ELIAS','RUTH','SAM','IVY','NOAH',
-             'CLARA','ANDRE','FATIMA','JUNE','PABLO','ESTHER','LUCA','MEI','DANIEL','ZARA'];
+/* Split by sex, because the name was drawn from one list while the figure was rolled from
+   another — so a bald man with a full beard could be captioned CLARA, and the card stopped
+   being a person and became a bug. `SAM` sits in both lists on purpose. */
+const NAMES_F=['MAYA','PRIYA','ANNA','LENA','SOFIA','GRACE','NINA','AISHA','RUTH','IVY',
+               'CLARA','FATIMA','JUNE','ESTHER','MEI','ZARA','SAM'];
+const NAMES_M=['DEREK','TOMAS','KWAME','HIRO','OMAR','MATEO','JONAS','ELIAS','NOAH','ANDRE',
+               'PABLO','LUCA','DANIEL','SAM'];
+const NAMES=NAMES_F.concat(NAMES_M);
 const QUOTES=[
   ['I CAME IN AT LUNCH WITH A CRACKED','MOLAR AND WALKED OUT WITH THE CROWN','ALREADY IN. ONE APPOINTMENT.'],
   ['THEY SCANNED IT, CUT IT AND FITTED','IT WHILE I SAT THERE. I STILL DO','NOT QUITE BELIEVE IT.'],
@@ -5377,7 +5409,8 @@ function drawTestimonial(){
   const salt=G.salt||1;
   const r=lcg(salt*31+7);
   const p=makePatient(0,salt);
-  const name=NAMES[Math.floor(r()*NAMES.length)];
+  const pool=p.fem?NAMES_F:NAMES_M;
+  const name=pool[Math.floor(r()*pool.length)];
   const quote=QUOTES[Math.floor(r()*QUOTES.length)];
 
   /* The count moved to the subline: at gen 2 the headline is 73px a character, and
