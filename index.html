@@ -5317,17 +5317,21 @@ function drawPatient(ox,oy,u,p,after,happy){
      Whites, an iris and a lid that is skin in shadow. They were 6x4 blocks of white under a
      solid black bar, which at this size is not an eye — it is a slot. */
   const ey=PT_TOP+17;
-  P(CXC-11,ey-4,6,1,hairDk); P(CXC-12,ey-3,2,1,hairDk);      // brows, lifted at the outer end
-  P(CXC+5,ey-4,6,1,hairDk);  P(CXC+10,ey-3,2,1,hairDk);
-  P(CXC-11,ey,5,3,'#FFF6E6'); P(CXC+6,ey,5,3,'#FFF6E6');
-  P(CXC-9,ey+1,2,2,'#1E1A16'); P(CXC+7,ey+1,2,2,'#1E1A16');  // iris
-  P(CXC-11,ey-1,5,1,shd);     P(CXC+6,ey-1,5,1,shd);         // lid
+  /* Less white. Whites this wide with a small iris in the middle is a stare, and a stare on
+     every face is what made a sheet of these unsettling — the eye and the teeth are the two
+     brightest things on a face, so at this size they decide the expression on their own. The
+     eye is an almond now: iris across most of it, one lit cell either side, and a lid of skin
+     in shadow. Brows drop a row closer and stop being full-width bars. */
+  P(CXC-10,ey-3,5,1,hairDk); P(CXC+6,ey-3,5,1,hairDk);       // brows
+  P(CXC-10,ey,4,3,'#1E1A16'); P(CXC+7,ey,4,3,'#1E1A16');     // the eye, mostly iris
+  P(CXC-10,ey+1,1,1,'#EFE9DA'); P(CXC+10,ey+1,1,1,'#EFE9DA');// a catchlight either side
+  P(CXC-10,ey-1,4,1,shd);     P(CXC+7,ey-1,4,1,shd);         // lid
   if(p.glasses){
-    P(CXC-13,ey-2,8,1,K); P(CXC-13,ey+4,8,1,K);
-    P(CXC-13,ey-2,1,7,K); P(CXC-6,ey-2,1,7,K);
-    P(CXC+5,ey-2,8,1,K);  P(CXC+5,ey+4,8,1,K);
-    P(CXC+5,ey-2,1,7,K);  P(CXC+12,ey-2,1,7,K);
-    P(CXC-5,ey,5,1,K);
+    P(CXC-12,ey-2,7,1,K); P(CXC-12,ey+4,7,1,K);
+    P(CXC-12,ey-2,1,7,K); P(CXC-6,ey-2,1,7,K);
+    P(CXC+6,ey-2,7,1,K);  P(CXC+6,ey+4,7,1,K);
+    P(CXC+6,ey-2,1,7,K);  P(CXC+12,ey-2,1,7,K);
+    P(CXC-5,ey,11,1,K);
   }
   // ── nose: one plane turning away from the light, and the shadow it drops ──
   P(CXC+1,ey+4,1,5,shd); P(CXC-1,ey+8,3,1,shd); P(CXC+2,ey+8,1,1,deep);
@@ -5365,7 +5369,9 @@ function drawPatient(ox,oy,u,p,after,happy){
     const t=(x-CXC)/mw, lift=Math.round(t*t*2);
     P(x,my-lift,1,1,'#7A3038');                        // upper lip
     const gapCol = (!after && Math.floor((x-mx0)/3)===p.gap);
-    P(x,my-lift+1,1,1,gapCol?'#180C10':'#FFFBF2');     // the enamel: one row
+    /* Warm off-white, not the brightest colour on the screen. #FFFBF2 next to skin is a
+       strip lamp, and it pulled the whole face into a grin. */
+    P(x,my-lift+1,1,1,gapCol?'#180C10':'#EFE4D2');     // the enamel: one row
     P(x,my-lift+2,1,1,'#5E2733');                      // lower lip, deeper than the upper
     P(x,my-lift+3,1,1,shd);                            // and its shadow on the chin
   }
