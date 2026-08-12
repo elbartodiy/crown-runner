@@ -3985,7 +3985,13 @@ const TUTOR=[
     and deliberately not back through the bore: scan, cut, seat is one continuous thing, which
     is the argument the cabinet exists to make. */
  {tgt:'mill',
-  text:['THE SCAN GOES TO THE MILL.','IT CUTS THE CROWN HERE.'],
+  /* Names what actually happens, and names the products doing it. "The scan goes to the mill"
+     described a conveyor belt; the design step — the one the case slip has a checkbox for —
+     went unmentioned, and so did the fact that nobody drives either machine. */
+  /* Three short lines, not two long ones: the bubble is capped at 528px and measures the
+     widest line, so a 708px sentence was simply clipped mid-word. Measured — 399 / 291 / 387
+     against a 468px limit. */
+  text:['AI DESIGNS THE CROWN','FROM YOUR SCAN.','FASTMILL.IO CUTS IT.'],
   at:()=>true, done:()=>true, diagram:'mill', anim:3.6},
  /* The one stage the player performs rather than watches, and it is performed with the same
     button that fires a crown in the shift — so the lesson is not a demonstration of seating,
