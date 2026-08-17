@@ -498,7 +498,7 @@ function rebuildKbd(){
 const AX_ON=0.45;                       // deflection from rest that counts as pushed
 /* Encoders known to put the stick's horizontal on axis 1 rather than axis 0. */
 const AUTO_SWAP=/0079|dragonrise|generic\s*usb\s*joy/i;
-let axRest=null, axLive=[], padLive=[], padName='';
+let axRest=null, axRestRaw=null, axLive=[], padLive=[], padName='';
 /* Buttons that are already down the moment the pad appears. Cheap encoders float unused inputs,
    and a stuck button is silent poison: an edge is `held && !heldLastFrame`, so if the board reports
    START as permanently pressed the edge fires once at boot and never again. Everything else keeps
@@ -537,7 +537,8 @@ function saveBind(){
 function bindCode(){
   const part=a=>{ const d=BIND[a], b=[];
     if(d.pads&&d.pads.length) b.push('p'+d.pads.join('.'));
-    if(d.axes&&d.axes.length) b.push(d.axes.map(x=>'a'+x.i+(x.sign>0?'+':'-')).join('.'));
+    if(d.axes&&d.axes.length) b.push(d.axes.map(x=>x.val!==undefined
+        ? 'h'+x.i+'@'+x.val : 'a'+x.i+(x.sign>0?'+':'-')).join('.'));
     return a.toUpperCase()+'='+(b.join('/')||'-'); };
   return BIND_ACTS.map(part).join('  ');
 }
@@ -566,7 +567,7 @@ const Input={axis:0,scan:false,scanEdge:false,slow:false,fire:false,fireEdge:fal
 const tapped=new Set();
 /* The setup screen needs the raw code of a press, not the game's interpretation of it —
    the whole point is that the interpretation is what is being set. */
-let keyTap=null, padTap=null, axisTap=null, axWas=[]; const padWas=new Set();
+let keyTap=null, padTap=null, axisTap=null, axWas=[], axWasRaw=[]; const padWas=new Set();
 /* Any input wakes the audio, not just a gamepad. audioWake() used to be called from exactly
    one place — the pad-button branch of pollInput — so on a machine with no pad plugged in, or
    before anybody touched one, the AudioContext stayed suspended for the whole session and the
@@ -586,7 +587,7 @@ addEventListener('keydown',e=>{
 addEventListener('keyup',e=>Input.keys.delete(e.code));
 addEventListener('blur',()=>Input.keys.clear());
 // a pad that arrives after the page has to be measured when it arrives, not before
-addEventListener('gamepadconnected',()=>{ axRest=null; padStuck=null; });
+addEventListener('gamepadconnected',()=>{ axRest=null; axRestRaw=null; padStuck=null; });
 const held=arr=>arr.some(k=>Input.keys.has(k));
 
 function pollInput(){
@@ -614,7 +615,14 @@ function pollInput(){
      a pad connects and whenever the settings screen opens, and a reading is only trusted as
      "rest" if it is near the middle — an axis found sitting at an extreme is treated as
      centred at zero instead, which is the assumption that at least fails loudly. */
-  if(axRest===null&&axLive.length) axRest=axLive.map(v=>Math.abs(v)>0.9?0:v);
+  /* Two rest readings, not one. axRest is the sanitised version used for ordinary
+     analogue axes; axRestRaw keeps what the board actually sent, because a POV hat idles
+     at a value like 3.29 and sanitising that to zero destroys the one number needed to
+     recognise it as a hat at all. */
+  if(axRest===null&&axLive.length){
+    axRest=axLive.map(v=>Math.abs(v)>0.9?0:v);
+    axRestRaw=axLive.slice();
+  }
   /* Some encoders report the stick's two axes the other way round from the convention —
      the generic 0079:0006 board on this cabinet puts left/right on axis 1 and leaves axis 0
      at zero, which reads as a stick that does nothing at all. Bindings still name axes 0 and
@@ -632,7 +640,17 @@ function pollInput(){
     const d=BIND[act]; if(!d) return false;
     if(held(d.codes)||held(KBD_LIVE[act])) return true;
     if((d.pads||[]).some(i=>padDown.includes(i))) return true;
-    return (d.axes||[]).some(a=>a.sign>0 ? defl(a.i)>AX_ON : defl(a.i)<-AX_ON);
+    /* A hat is four VALUES on one axis, not two signs, so it cannot be written as a sign
+       test — which is why a board reporting its stick on axis 9 at 3.29 could not be bound
+       at all. An axis binding carrying `val` matches that reading within a tolerance; one
+       carrying `sign` keeps the old behaviour for genuine analogue sticks. */
+    return (d.axes||[]).some(a=>{
+      if(a.val!==undefined){
+        const raw=axLive[AXI(a.i)];
+        return raw!=null && Math.abs(raw-a.val)<(a.tol||0.15);
+      }
+      return a.sign>0 ? defl(a.i)>AX_ON : defl(a.i)<-AX_ON;
+    });
   };
   sc=on('scan'); fr=on('fire'); sl=on('slow'); st=on('start');
   lf=on('left'); rt=on('right'); up=on('up'); dn=on('down');
@@ -642,6 +660,10 @@ function pollInput(){
   let best=0;
   for(const d of [BIND.left,BIND.right])
     for(const a of (d.axes||[])){
+      /* Hats have no travel — they are on or off — and their idle reading is a large number
+         like 3.29 that this block would read as full deflection, pinning the wand to one wall
+         the moment the game started. Only genuine analogue axes are measured here. */
+      if(a.val!==undefined) continue;
       const v=defl(a.i);
       if(Math.abs(v)>0.22&&Math.abs(v)>Math.abs(best)) best=v;
     }
@@ -650,10 +672,19 @@ function pollInput(){
   for(const i of padDown) if(!padWas.has(i)) padTap=i;
   padWas.clear(); for(const i of padDown) padWas.add(i);
   if(axisTap===null&&axRest) for(let i=0;i<axLive.length;i++){
-    const v=defl(i);
-    if(Math.abs(v)>0.7&&Math.abs(axWas[i]||0)<0.3){ axisTap={i,sign:v>0?1:-1}; break; }
+    const rest0=(axRestRaw&&axRestRaw[i]!=null)?axRestRaw[i]:0;
+    if(Math.abs(rest0)>1.2){
+      // a hat: remember the exact reading this direction produces
+      const raw=axLive[i], was=(axWasRaw[i]!=null?axWasRaw[i]:rest0);
+      if(Math.abs(raw-rest0)>0.25 && Math.abs(was-rest0)<=0.25){
+        axisTap={i,val:Math.round(raw*1000)/1000,tol:0.15}; break; }
+    } else {
+      const v=defl(i);
+      if(Math.abs(v)>0.7&&Math.abs(axWas[i]||0)<0.3){ axisTap={i,sign:v>0?1:-1}; break; }
+    }
   }
   axWas=axLive.map((_,i)=>defl(i));
+  axWasRaw=axLive.slice();
   const tap=arr=>(arr||[]).some(k=>tapped.has(k));
   const tapAct=act=>tap(BIND[act].codes)||tap(KBD_LIVE[act]);
   Input.axis=clamp(ax,-1,1);
@@ -5411,7 +5442,7 @@ const MENU_ROWS=[
   {kind:'exit', name:'SAVE AND EXIT'},
 ];
 function enterBind(){
-  mode='BIND'; bindHold=0; axRest=null; padStuck=null;   // retake the centre and the rest state
+  mode='BIND'; bindHold=0; axRest=null; axRestRaw=null; padStuck=null;   // retake the centre and the rest state
   bindUI={row:0,capture:null,armed:false,saved:0};
   keyTap=null; padTap=null;
   SFX.ui();
@@ -5439,7 +5470,9 @@ function bindTick(){
                  axes:axisTap!==null?[axisTap]:[],
                  label:axisTap!==null
                    ? (wasLabel&&/^STICK/.test(wasLabel)?wasLabel
-                      :'AXIS '+axisTap.i+(axisTap.sign>0?'+':'-'))
+                      :(axisTap.val!==undefined
+                        ? 'HAT '+axisTap.i+' @'+axisTap.val
+                        : 'AXIS '+axisTap.i+(axisTap.sign>0?'+':'-')))
                    : codeLabel(keyTap,padTap)};
       keyTap=null; padTap=null; axisTap=null; U.capture=null; U.saved=1.2;
       saveBind(); SFX.lock();
