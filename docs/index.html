@@ -1451,12 +1451,21 @@ function update(dt){
     spawnTooth();
     G.spawnIn=practising()?999:lerp(CFG.spawn.gapStart,CFG.spawn.gapEnd,shift);
   }
-  const elapsed=CFG.round-G.t;
-  if(G.closing<=0&&elapsed>CFG.spawn.debrisAfter
-     &&Math.random()<dt*CFG.spawn.debrisRate*shift*2)
-    spawnDebris();
-  G.podIn-=dt;
-  if(G.podIn<=0&&G.closing<=0){ spawnPod(); G.podIn=rnd(13,19); }
+  /* Nothing but teeth on a drill. The mark upgrades the SCANNER, and it was turning up on the
+     seat drill — a round with no scanning in it at all — so the one collectable on screen
+     rewarded a mechanic the player had just been told to ignore. Debris goes for the same
+     reason: a drill is one verb wide, and dodging is not the verb.
+     The clock is frozen during a drill, so `elapsed` is 0 and debris would not have fired
+     anyway — but that is an accident of the timer, not a rule, and it would come back the
+     moment the timer did. */
+  if(!practising()){
+    const elapsed=CFG.round-G.t;
+    if(G.closing<=0&&elapsed>CFG.spawn.debrisAfter
+       &&Math.random()<dt*CFG.spawn.debrisRate*shift*2)
+      spawnDebris();
+    G.podIn-=dt;
+    if(G.podIn<=0&&G.closing<=0){ spawnPod(); G.podIn=rnd(13,19); }
+  }
   }
 
   /* Scanning: hold the button with a tooth aligned ahead. Nothing gates it. A full magazine
@@ -1722,6 +1731,14 @@ function update(dt){
   G.flash=Math.max(0,G.flash-dt*3.4);
   G.bannerT=Math.max(0,G.bannerT-dt);
   G.hintT=Math.max(0,G.hintT-dt);
+  /* A drill's instruction stays up for the whole drill. It used to be a 4.5-second banner like
+     any other, so the bore opened, the player read WHICH BUTTON once, and then the line went
+     away while they were still working out what to point at. It is the only thing the round is
+     about — it should be on screen for as long as the round is. Held rather than re-issued, so
+     a banner (GOOD · NEXT, the rep count) still takes the band and the instruction comes back
+     underneath it afterwards. */
+  if(practising()&&G.practice.over<=0&&G.hintT<=0&&G.bannerT<=0)
+    hint(btnSub(DRILLS[G.practice.id].hint),3);
 }
 
 /* The formation marches, reverses at the span, and steps in every time it turns.
