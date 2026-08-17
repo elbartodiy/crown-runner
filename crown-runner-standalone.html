@@ -550,7 +550,14 @@ const tapped=new Set();
 /* The setup screen needs the raw code of a press, not the game's interpretation of it —
    the whole point is that the interpretation is what is being set. */
 let keyTap=null, padTap=null, axisTap=null, axWas=[]; const padWas=new Set();
+/* Any input wakes the audio, not just a gamepad. audioWake() used to be called from exactly
+   one place — the pad-button branch of pollInput — so on a machine with no pad plugged in, or
+   before anybody touched one, the AudioContext stayed suspended for the whole session and the
+   game ran in silence. A browser will not start audio until it has seen a user gesture, and a
+   keypress is a user gesture; it simply was never wired to one. */
+addEventListener('pointerdown',()=>audioWake(),{passive:true});
 addEventListener('keydown',e=>{
+  audioWake();
   if(e.code==='F11') return;
   if(!e.repeat){
     tapped.add(e.code); keyTap=e.code;
@@ -729,6 +736,12 @@ function musFor(key){
       if(k!==key && MUSIC[k]===MUSIC[key] && musEl[k]){ musEl[key]=musEl[k]; return musEl[key]; }
     }
     const a=new Audio();
+    /* Dead only when the element SAYS it is dead. There used to be a two-second watchdog here:
+       if readyState was still 0 after two seconds the slot was marked null forever. On this
+       machine a megabyte of base64 decodes inside that window; on a slower one it does not,
+       both slots get retired, musResolve runs out of fallbacks and the cabinet plays nothing
+       for the rest of the session. A slow decode is not a failure — an error is. */
+    a.onerror=()=>{ musEl[key]=null; };
     a.src=MUSIC[key]; a.loop=true; a.volume=0; a.preload='auto';
     a.load();                      // or a 404 may never report and the slot never falls back
     /* Falls back from .mp3 to .m4a once, then gives up quietly. Suno hands back whatever
@@ -775,11 +788,7 @@ function musTick(dt){
           :                               'stage1';
   /* Touch the wanted slot so it gets its chance to load and report, then resolve: one that
      has already failed hands over to its fallback. */
-  if(musWant){
-    const a0=musFor(musWant);
-    if(a0 && a0.readyState===0 && nowMs()-(+a0.dataset.t0||0) > 2000) musEl[musWant]=null;
-    musWant=musResolve(musWant);
-  }
+  if(musWant) musWant=musResolve(musWant);
   /* The whole lesson sits under the speech, not just the moments a panel is open. Ducking on
      `paused` meant it lifted back to full between one slide and the next and dropped again a
      third of a second later — a jump every beat. The lesson is one quiet passage. */
