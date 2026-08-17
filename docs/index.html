@@ -5224,210 +5224,164 @@ const PT_W=64, PT_H=78;
    is one step up the skin ramp, the right edge one step down, and there is a contact shadow
    under the hair and under the jaw. The old drawing was a rectangle of skin with a keyline and
    one 12%-alpha strip on a cheek, which is why it read as a mask rather than a face. */
+/* ── THE HEAD ───────────────────────────────────────────────────────────────
+   A skull, not an egg. The previous profile was one smooth taper from crown to chin, which
+   is why it read as a shape rather than a head: no brow, no cheekbone, no angle of the jaw.
+   This one states each landmark and lets the widths between them do the rest —
+
+     crown        rounds in over four rows
+     cranium      the widest part of a front view, held through the brow and the eyes
+     cheekbone    one step in, held
+     cheek        narrowing
+     jaw angle    a TWO-cell step, the one deliberate corner in the outline
+     chin         flat, not pointed
+
+   Height is 39 rows against 28 of width — about 1.4, which is what a front-on head measures.
+   The old one was 1.29 and read squat. */
 const PT_HEAD=(()=>{
-  const w=[];                                  // halfWidth by row, from y=8
-  const put=(n,v)=>{ for(let i=0;i<n;i++) w.push(v); };
-  put(1,9); put(1,11); put(1,12); put(2,13); put(18,14);
-  put(1,14); put(3,13); put(3,12); put(2,11); put(2,10);
-  put(2,9); put(1,8); put(2,7); put(1,6); put(1,5); put(1,4);
+  const w=[]; const put=(n,v)=>{ for(let i=0;i<n;i++) w.push(v); };
+  put(1,8); put(1,10); put(1,11); put(1,12); put(2,13);   // crown
+  put(12,14);                                             // cranium, brow, eyes
+  put(5,13);                                              // cheekbone
+  put(3,12);                                              // cheek
+  put(2,11);                                              // towards the jaw
+  put(2,9);                                               // the angle — a corner on purpose
+  put(2,8); put(2,7); put(3,6); put(2,6);                   // jaw to chin — flat, not a point
+  /* The tail used to run down to 4, which is eight cells of chin: a teardrop, not a face.
+     A front-on chin is about as wide as the mouth, and the mouth here is nine. */
   return w;
 })();
-const PT_TOP=8;                                 // first head row
+const PT_TOP=8;
 const skTone=(p,d)=>SKIN[clamp((p.skinIx===undefined?2:p.skinIx)+d,0,SKIN.length-1)];
 function drawPatient(ox,oy,u,p,after,happy){
   const P=pxPen(ox,oy,u), K='#0A0808';
   const HW=(y)=>{ const i=y-PT_TOP; return (i<0||i>=PT_HEAD.length)?0:PT_HEAD[i]; };
-  const CXC=32;                                 // the head's centre column
-  const chin=PT_TOP+PT_HEAD.length;             // first row below the head
-  const lit=skTone(p,-1), loc=p.skin, shd=skTone(p,1), deep=skTone(p,2);
+  const CXC=32, chin=PT_TOP+PT_HEAD.length;
+  /* THREE tones of skin and one rim. That is the whole palette of this face. The last version
+     had four plus a cheek highlight plus separate shadows under the hair, the jaw and the lip —
+     on a head 28 cells wide that is not modelling, it is noise, and noise is what "dirty"
+     means. Light from the upper left, as everywhere else in this game. */
+  const lit=skTone(p,-1), loc=p.skin, shd=skTone(p,1), rim=skTone(p,2);
   const hairDk='#1E1A16';
 
-  /* ── shoulders ─────────────────────────────────────────────────────────
-     A profile per row, like the head, instead of a widening trapezoid. Two brackets: the
-     shoulder line rises fast from the neck and then flattens out towards the arm, which is
-     what a shoulder does — the old one grew at a constant rate and read as a brick. The
-     deltoid catches the light on the left and turns away on the right, and a collar seam
-     sits where the garment actually folds. */
+  /* ── shoulders: a profile per row, rising fast off the neck and easing out to the arm ── */
   const sy=chin+5;
-  const SHW=(y)=>{                                  // half-width of the body at row y
-    const t=clamp((y-sy)/9,0,1);
-    return Math.round(7+Math.sqrt(t)*23);           // fast at first, then easing out
-  };
+  const SHW=(y)=>Math.round(7+Math.sqrt(clamp((y-sy)/9,0,1))*23);
   for(let y=sy;y<PT_H;y++){
     const hw=SHW(y);
     P(CXC-hw,y,hw*2,1,p.top);
-    P(CXC-hw,y,4,1,'rgba(255,255,255,0.12)');       // lit deltoid
-    P(CXC+hw-4,y,4,1,'rgba(10,12,16,0.26)');        // and the far one
+    P(CXC-hw,y,4,1,'rgba(255,255,255,0.10)');
+    P(CXC+hw-4,y,4,1,'rgba(10,12,16,0.24)');
   }
-  // the keyline follows the same profile, so the silhouette steps instead of stair-casing
   for(let y=sy;y<PT_H;y++){
     const hw=SHW(y), up=SHW(y-1);
     P(CXC-hw-1,y,1,1,K); P(CXC+hw,y,1,1,K);
     if(y>sy&&up<hw){ P(CXC-hw-1,y-1,hw-up+1,1,K); P(CXC+up,y-1,hw-up+1,1,K); }
   }
-  P(CXC-SHW(sy),sy-1,SHW(sy)*2,1,K);                // the top of the trapezius
-  /* Where the neck meets the body, the garment is in the head's shadow. */
-  for(let y=sy;y<sy+4;y++){ const hw=SHW(y);
-    P(CXC-Math.min(hw,9),y,Math.min(hw,9)*2,1,'rgba(10,12,16,0.28)'); }
-  if(p.topStyle===1){                               // an open collar
+  P(CXC-SHW(sy),sy-1,SHW(sy)*2,1,K);
+  if(p.topStyle===1){                                  // an open collar
     P(CXC-9,sy,5,7,'#EFE9DA'); P(CXC+4,sy,5,7,'#EFE9DA');
     P(CXC-9,sy,5,1,K);         P(CXC+4,sy,5,1,K);
-    P(CXC-2,sy,4,8,K);                              // the opening between the points
+    P(CXC-2,sy,4,8,K);
   }
-  if(p.topStyle===2){ P(CXC-5,sy,10,7,loc); P(CXC-5,sy,10,1,K); }        // v-neck
-  if(p.topStyle===3){                                                     // a shoulder seam
+  if(p.topStyle===2){ P(CXC-5,sy,10,7,loc); P(CXC-5,sy,10,1,K); }
+  if(p.topStyle===3){
     for(let y=sy+3;y<PT_H;y++){ const hw=SHW(y);
-      P(CXC-hw+5,y,1,1,'rgba(10,12,16,0.30)'); P(CXC+hw-6,y,1,1,'rgba(10,12,16,0.30)'); }
+      P(CXC-hw+5,y,1,1,'rgba(10,12,16,0.28)'); P(CXC+hw-6,y,1,1,'rgba(10,12,16,0.28)'); }
   }
 
-  // ── neck, in shadow because the head is over it ──
-  for(let y=chin-3;y<sy;y++) P(CXC-5,y,10,1,y<chin?loc:shd);
-  P(CXC-5,chin,10,2,deep);                      // the jaw's own shadow on the throat
+  // ── neck: narrower than the jaw, and in the head's shadow ──
+  for(let y=chin-2;y<sy;y++) P(CXC-4,y,8,1,shd);
+  P(CXC-4,chin-2,8,1,rim);
 
-  // ── the head ──
+  // ── the head: three tones, nothing else ──
   for(let y=PT_TOP;y<chin;y++){
     const hw=HW(y);
     P(CXC-hw,y,hw*2,1,loc);
-    P(CXC-hw,y,3,1,lit);                        // lit rim, upper left
-    P(CXC+hw-2,y,2,1,shd);                      // turning away on the right
+    P(CXC-hw,y,4,1,lit);                               // the lit plane, upper left
+    P(CXC+hw-3,y,3,1,shd);                             // the plane turning away
   }
-  /* A COLOURED keyline, not ink all the way round. Solid black on every edge turns a face
-     into a mask: the head stops being a volume and becomes a sticker cut out of the
-     background. The lit side takes the darkest skin tone — that reads as the form turning
-     away — and only the shadow side, where the head genuinely goes dark, takes ink. */
-  const rim=skTone(p,3);
+  /* A coloured keyline: darkest skin on the lit side, ink only where the head genuinely goes
+     dark. Ink the whole way round makes a mask of it. */
   for(let y=PT_TOP;y<chin;y++){
-    const hw=HW(y);
+    const hw=HW(y), up=HW(y-1), dn=HW(y+1);
     P(CXC-hw-1,y,1,1,rim); P(CXC+hw,y,1,1,K);
-    const up=HW(y-1), dn=HW(y+1);
-    if(up<hw) { P(CXC-hw-1,y-1,hw-up+1,1,rim); P(CXC+up,y-1,hw-up+1,1,K); }
-    if(dn<hw) { P(CXC-hw-1,y+1,hw-dn+1,1,rim); P(CXC+dn,y+1,hw-dn+1,1,K); }
+    if(up<hw){ P(CXC-hw-1,y-1,hw-up+1,1,rim); P(CXC+up,y-1,hw-up+1,1,K); }
+    if(dn<hw){ P(CXC-hw-1,y+1,hw-dn+1,1,rim); P(CXC+dn,y+1,hw-dn+1,1,K); }
   }
 
-  /* ── hair ─────────────────────────────────────────────────────────────
-     Hair sits ON the skull, so it is wider than the skull and starts above it. Every version
-     before this was painted inside the head's own silhouette, which is why it read as a cap
-     stuck to the top of an egg rather than as hair. Each style states how much volume it
-     carries and how far above the crown it rises; the profile eases from full volume at the
-     crown to nothing at the hairline, so it meets the face instead of ending in a step. It
-     carries its own keyline, because it is now outside the head's. */
+  /* ── hair: it sits ON the skull, so it is wider than the skull ──────────────
+     Drawn inside the outline it looked painted on. It now carries a cell or two of volume at
+     the crown, easing to nothing at the hairline, with its own keyline where it overhangs. */
   const S=p.style;
-  const HAIR_VOL={0:1, 1:2, 2:3, 3:2, 4:2, 5:0}[S]||0;
-  const HAIR_TOP={0:2, 1:3, 2:4, 3:3, 4:3, 5:0}[S]||0;
+  const VOL={0:1,1:1,2:2,3:2,4:1,5:0}[S]||0;
+  const capTo=PT_TOP+(S===2?14:11);
+  const hy0=PT_TOP-(S===0?0:1);
   if(S===5){
-    // bald: the crown takes the light, and that IS the hairstyle
-    for(let y=PT_TOP;y<PT_TOP+5;y++) P(CXC-HW(y)+2,y,5,1,lit);
+    for(let y=PT_TOP;y<PT_TOP+4;y++) P(CXC-HW(y)+4,y,5,1,lit);   // the crown catches the light
   } else {
-    const capTo = PT_TOP + (S===2?13:10);
-    const hy0 = PT_TOP - HAIR_TOP;
-    const hairHW=(y)=>{
-      const base = y>=PT_TOP ? HW(y)
-                             : Math.max(3, HW(PT_TOP) - (PT_TOP-y)*3);
-      const t = clamp((capTo-y)/(capTo-hy0),0,1);
-      return base + Math.round(HAIR_VOL*Math.sqrt(t));
+    const hhw=(y)=>{
+      const base=(y>=PT_TOP)?HW(y):Math.max(3,HW(PT_TOP)-(PT_TOP-y)*3);
+      const t=clamp((capTo-y)/(capTo-hy0),0,1);
+      return base+Math.round(VOL*Math.sqrt(t));
     };
     for(let y=hy0;y<capTo;y++){
-      const hw=hairHW(y);
-      P(CXC-hw-1,y,1,1,K); P(CXC+hw,y,1,1,K);        // its own keyline
+      const hw=hhw(y);
+      P(CXC-hw-1,y,1,1,K); P(CXC+hw,y,1,1,K);
       P(CXC-hw,y,hw*2,1,p.hair);
-      P(CXC+hw-3,y,3,1,hairDk);                       // the far side of the head
-      const up=hairHW(y-1);
-      if(y>hy0&&up<hw){ P(CXC-hw-1,y-1,hw-up+1,1,K); P(CXC+up,y-1,hw-up+1,1,K); }
+      P(CXC+hw-3,y,3,1,hairDk);
     }
-    P(CXC-hairHW(hy0),hy0-1,hairHW(hy0)*2,1,K);       // the top of the head
-    P(CXC-hairHW(hy0)+2,hy0+1,4,1,'rgba(255,255,255,0.14)');   // one highlight, upper left
-    /* The hairline. Men recede at the temples and keep a little in the middle; women carry a
-       fringe across. Two shapes is enough — the point is that it is not a ruled line. */
-    const hwc=HW(capTo);
-    if(S===0||S===1){
-      P(CXC-hwc,capTo,4,1,p.hair); P(CXC+hwc-4,capTo,4,1,p.hair);
-      P(CXC-3,capTo,6,1,p.hair);
-    } else {
-      P(CXC-hwc+1,capTo,hwc*2-2,1,p.hair);
-      P(CXC-hwc+2,capTo+1,5,1,p.hair); P(CXC+hwc-7,capTo+1,5,1,p.hair);
-    }
-    if(S===1||S===3){                                  // sideburns, or length down the sides
-      const to = S===3 ? chin-2 : capTo+5;
+    P(CXC-hhw(hy0),hy0-1,hhw(hy0)*2,1,K);
+    // a hairline that dips at the temples rather than cutting straight across
+    P(CXC-HW(capTo),capTo,4,1,p.hair); P(CXC+HW(capTo)-4,capTo,4,1,hairDk);
+    if(S===1||S===3){                                   // sideburns, or length down the sides
+      const to=S===3?chin-3:capTo+3;
       for(let y=capTo;y<to;y++){ const hw=HW(y);
-        P(CXC-hw-(S===3?1:0),y,S===3?4:2,1,p.hair);
-        P(CXC+hw-(S===3?3:2),y,S===3?4:2,1,S===3?hairDk:p.hair); }
+        P(CXC-hw,y,S===3?4:2,1,p.hair);
+        P(CXC+hw-(S===3?4:2),y,S===3?4:2,1,hairDk); }
     }
-    if(S===4){                                          // a bun, above the volume not inside it
-      const bw=5, by=hy0-4;
-      P(CXC-bw,by,bw*2,4,p.hair); P(CXC-bw-1,by-1,bw*2+2,1,K);
-      P(CXC-bw-1,by,1,4,K); P(CXC+bw,by,1,4,K);
-    }
+    if(S===4){ P(CXC-4,hy0-5,8,5,p.hair); P(CXC-4,hy0-5,8,1,K); }   // a bun
   }
 
-  /* ── eyes ──────────────────────────────────────────────────────────────
-     Whites, an iris and a lid that is skin in shadow. They were 6x4 blocks of white under a
-     solid black bar, which at this size is not an eye — it is a slot. */
-  const ey=PT_TOP+17;
-  /* Less white. Whites this wide with a small iris in the middle is a stare, and a stare on
-     every face is what made a sheet of these unsettling — the eye and the teeth are the two
-     brightest things on a face, so at this size they decide the expression on their own. The
-     eye is an almond now: iris across most of it, one lit cell either side, and a lid of skin
-     in shadow. Brows drop a row closer and stop being full-width bars. */
-  /* One brow a row higher. Perfect symmetry is uncanny by itself, and the offset is keyed to
-     the patient so it holds still instead of flickering frame to frame. */
-  const tilt=p.age%2;
-  P(CXC-10,ey-3-tilt,5,1,hairDk); P(CXC+6,ey-3,5,1,hairDk);  // brows
-  P(CXC-10,ey,4,3,'#1E1A16'); P(CXC+7,ey,4,3,'#1E1A16');     // the eye, mostly iris
-  P(CXC-10,ey+1,1,1,'#EFE9DA'); P(CXC+10,ey+1,1,1,'#EFE9DA');// a catchlight either side
-  P(CXC-10,ey-1,4,1,shd);     P(CXC+7,ey-1,4,1,shd);         // lid
+  /* ── eyes: dark, with one lit cell. No sclera ──────────────────────────────
+     A block of white at this scale is a stare, and a stare on every face is what made a sheet
+     of these unpleasant. One brow sits a row higher: exact symmetry is uncanny by itself, and
+     the offset is keyed to the patient so it holds still. */
+  const ey=PT_TOP+17, tilt=p.age%2;
+  P(CXC-11,ey-3-tilt,6,1,hairDk); P(CXC+5,ey-3,6,1,hairDk);
+  /* Three rows, not two. At two the eye is a slit and every patient looked half asleep. */
+  P(CXC-10,ey-1,4,1,shd);      P(CXC+6,ey-1,4,1,shd);        // the lid
+  P(CXC-10,ey,4,3,'#1E1A16');  P(CXC+6,ey,4,3,'#1E1A16');
+  P(CXC-10,ey,1,1,lit);        P(CXC+6,ey,1,1,lit);          // catchlight, upper left
   if(p.glasses){
-    P(CXC-12,ey-2,7,1,K); P(CXC-12,ey+4,7,1,K);
-    P(CXC-12,ey-2,1,7,K); P(CXC-6,ey-2,1,7,K);
-    P(CXC+6,ey-2,7,1,K);  P(CXC+6,ey+4,7,1,K);
-    P(CXC+6,ey-2,1,7,K);  P(CXC+12,ey-2,1,7,K);
-    P(CXC-5,ey,11,1,K);
+    P(CXC-12,ey-2,7,1,K); P(CXC-12,ey+3,7,1,K);
+    P(CXC-12,ey-2,1,6,K); P(CXC-6,ey-2,1,6,K);
+    P(CXC+5,ey-2,7,1,K);  P(CXC+5,ey+3,7,1,K);
+    P(CXC+5,ey-2,1,6,K);  P(CXC+11,ey-2,1,6,K);
+    P(CXC-5,ey,5,1,K);
   }
-  // ── nose: one plane turning away from the light, and the shadow it drops ──
-  P(CXC+1,ey+4,1,5,shd); P(CXC-1,ey+8,3,1,shd); P(CXC+2,ey+8,1,1,deep);
+  // ── nose: a shadow, and the shadow it drops. Nothing lit. ──
+  P(CXC+1,ey+4,1,4,shd); P(CXC-1,ey+7,3,1,shd);
 
-  const my=PT_TOP+29;
-  /* ── beard, before the mouth so the mouth cuts through it ──────────────
-     A mass filling the jaw, not a line tracing it. Drawn as an outline it read as a chin
-     strap; drawn across every row below the lip it was a bib. It is inset one cell from the
-     silhouette, and four cells at the lip so the moustache does not swallow the smile. */
+  const my=PT_TOP+27;
+  /* ── beard: a mass on the jaw, drawn before the mouth so the mouth cuts it ── */
   if(p.beard){
-    for(let y=ey+5;y<my-2;y++){ const hw=HW(y);
-      P(CXC-hw+1,y,3,1,p.hair); P(CXC+hw-4,y,3,1,hairDk); }   // sideburns to the jaw
+    for(let y=ey+6;y<my-2;y++){ const hw=HW(y);
+      P(CXC-hw,y,3,1,p.hair); P(CXC+hw-3,y,3,1,hairDk); }
     for(let y=my-2;y<chin;y++){ const hw=HW(y);
-      const ins = y<my+2 ? 5 : 1;
+      const ins=y<my+2?5:1;
       P(CXC-hw+ins,y,(hw-ins)*2,1,p.hair);
-      P(CXC+hw-ins-3,y,3,1,hairDk);
-    }
+      P(CXC+hw-ins-3,y,3,1,hairDk); }
   }
 
-  /* ── the smile ─────────────────────────────────────────────────────────
-     Eleven cells and two rows of enamel, framed by both lips. The last cut was fifteen cells
-     of white three rows deep with a dark line over it, which at this size is a set of bared
-     teeth — a grimace, not a smile. Lips on both sides and less of them showing is what makes
-     it read warm. */
-  /* One row of enamel, not two, and more lip than teeth. A block of white this size is a grin,
-     and ten of them side by side is a row of forced grins — which is what made the card
-     uncomfortable to look at. A single lit row under a lip line reads as somebody pleased,
-     which is all it has to say. Width varies by a cell between people so a sheet of patients
-     is not the same mouth stamped ten times.
-
-     MINUS the lift, not plus: Y grows downward, so adding it dropped the corners, and every
-     version of this mouth before that fix was a frown. */
+  /* ── the smile: a closed curve, enamel in the middle three cells only ────── */
   const mw=4+(p.age%2), mx0=CXC-mw, mx1=CXC+mw;
   for(let x=mx0;x<=mx1;x++){
-    const t=(x-CXC)/mw, lift=Math.round(t*t*2);
-    /* A closed curve, with enamel showing only in the middle three cells. A row of teeth
-       spanning the whole mouth is a rictus at this scale however carefully it is toned down —
-       and the card shows the same face over and over, so a rictus repeated is a horror film.
-       Three cells say "there is a tooth there" and let the lip do the smiling. */
-    const mid=Math.abs(x-CXC)<=1;
-    P(x,my-lift,1,1,'#7A3038');                        // the lip line, and it IS the smile
-    P(x,my-lift+1,1,1, mid ? ((!after)?'#180C10':'#EFE4D2') : '#5E2733');
-    P(x,my-lift+2,1,1,shd);                            // the shadow under the lower lip
+    const t=(x-CXC)/mw, lift=Math.round(t*t*2), mid=Math.abs(x-CXC)<=1;
+    P(x,my-lift,1,1,'#7A3038');
+    P(x,my-lift+1,1,1, mid ? (after?'#EFE4D2':'#180C10') : '#5E2733');
+    P(x,my-lift+2,1,1,shd);
   }
-  /* The cheeks lift with it. Without this the mouth is a mark applied to a face; with it the
-     face is doing something. */
-  P(mx0-2,my-3,2,1,lit); P(mx1+1,my-3,2,1,lit);
 }
 
 /* One patient, not a wall of them. A grid of eight pairs was a chart; one face with something
@@ -5451,6 +5405,32 @@ const QUOTES=[
   ['I HAD PUT IT OFF FOR A YEAR BECAUSE','OF THE TWO VISITS. TURNS OUT IT','ONLY TAKES ONE.'],
   ['MY DAUGHTER ASKED WHY I WAS SMILING','SO MUCH. I TOLD HER IT WAS FINISHED','ALREADY.'],
 ];
+/* ── WHO YOU MEET, AND IN WHAT ORDER ────────────────────────────────────────
+   A shuffle bag, not a dice roll. Rolling a patient at random meant the same face could come
+   up twice in three credits while a dozen others had never been seen — on a stand, where
+   people watch each other play, a repeat reads as "there are only two of them". Now every
+   patient in the roster is dealt once before anybody comes round again, and the seam is
+   checked so the last of one cycle is never the first of the next.
+
+   PATIENT_POOL is the size of the roster. Drop in real photographed portraits and set this to
+   however many there are — nothing else has to change. */
+const PATIENT_POOL=24;
+function shuffleBag(n){
+  let bag=[], last=-1;
+  return ()=>{
+    if(!bag.length){
+      bag=Array.from({length:n},(_,i)=>i);
+      for(let i=n-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1));
+        [bag[i],bag[j]]=[bag[j],bag[i]]; }
+      if(n>1&&bag[0]===last){ const t=bag[0]; bag[0]=bag[1]; bag[1]=t; }
+    }
+    last=bag.shift();
+    return last;
+  };
+}
+const nextPatient=shuffleBag(PATIENT_POOL);
+const nextQuote=shuffleBag(QUOTES.length);
+
 function drawTestimonial(){
   const people=Math.max(0,Math.floor(G.seats/2));
   ctx.save(); ctx.fillStyle='rgba(8,8,10,0.92)'; ctx.fillRect(0,0,VW,VH); ctx.restore();
@@ -5462,12 +5442,15 @@ function drawTestimonial(){
         {size:24,weight:800,col:CFG.col.score,ls:'4px',font:F_MONO});
     return;
   }
-  const salt=G.salt||1;
-  const r=lcg(salt*31+7);
-  const p=makePatient(0,salt);
+  /* Drawn once per credit, not once per frame: the card is redrawn sixty times a second and
+     the person on it must not change while somebody is reading their name. */
+  if(G.patientIx===undefined){ G.patientIx=nextPatient(); G.quoteIx=nextQuote(); }
+  /* The index alone identifies the person — salt is fixed — so patient 7 is the same patient 7
+     in every session, with the same face and the same name. A person has one name. */
+  const p=makePatient(G.patientIx,1);
   const pool=p.fem?NAMES_F:NAMES_M;
-  const name=pool[Math.floor(r()*pool.length)];
-  const quote=QUOTES[Math.floor(r()*QUOTES.length)];
+  const name=pool[G.patientIx%pool.length];
+  const quote=QUOTES[G.quoteIx];
 
   /* The count moved to the subline: at gen 2 the headline is 73px a character, and
      'ONE OF 8 HAPPY PATIENTS' measured 1659px against 1620 of usable rail — it ran off the
