@@ -519,10 +519,27 @@ let BIND=(()=>{
   }catch(e){}
   return JSON.parse(JSON.stringify(BIND_DEFAULT));
 })();
+/* Did the save actually land? The old version wrapped setItem in an empty catch, so a browser
+   that refuses storage — a locked-down kiosk profile, a file:// origin, private browsing —
+   produced a settings screen that said nothing and forgot everything on the next launch. Write,
+   read back, compare. Anything less is a guess. */
+let storageOK=null;
 function saveBind(){
-  try{ localStorage.setItem(BIND_KEY,JSON.stringify(BIND)); }catch(e){}
+  const want=JSON.stringify(BIND);
+  try{ localStorage.setItem(BIND_KEY,want); storageOK=(localStorage.getItem(BIND_KEY)===want); }
+  catch(e){ storageOK=false; }
   rebuildKbd();
   applyBtnLabels();
+}
+/* The whole panel wiring on one line, so an operator can read it off the screen and it can be
+   baked into BIND_DEFAULT — which is the only place a cabinet's configuration is genuinely
+   safe. localStorage survives until something clears it; a default survives everything. */
+function bindCode(){
+  const part=a=>{ const d=BIND[a], b=[];
+    if(d.pads&&d.pads.length) b.push('p'+d.pads.join('.'));
+    if(d.axes&&d.axes.length) b.push(d.axes.map(x=>'a'+x.i+(x.sign>0?'+':'-')).join('.'));
+    return a.toUpperCase()+'='+(b.join('/')||'-'); };
+  return BIND_ACTS.map(part).join('  ');
 }
 /* {SCAN} and friends in any on-screen string become whatever is printed on the cap. */
 function btnSub(str){
@@ -5496,6 +5513,14 @@ function drawRawInput(){
   txt(fitPix('BTNS  '+(padLive.length?padLive.join(' '):'—'),W,15,1),x,y+100,
       {size:15,weight:700,ls:'1px',font:F_MONO,
        col:padLive.length?CFG.col.score:'rgba(138,131,119,0.7)'});
+  /* Whether the last save actually landed, and the wiring itself in one line. Between them
+     these answer the only question an operator has after re-binding a panel: will this still
+     be here tomorrow. If STORAGE says BLOCKED the answer is no, and the code below is what
+     gets sent back so the wiring can be built into the game instead. */
+  if(storageOK!==null)
+    txt(storageOK?'STORAGE  SAVED OK':'STORAGE  BLOCKED — WILL NOT PERSIST',x,y+128,
+        {size:15,weight:800,ls:'1px',font:F_MONO,
+         col:storageOK?'rgba(46,214,74,0.95)':CFG.col.redHot});
   for(let i=0;i<Math.min(axLive.length,10);i++){
     const rest=(axRest&&axRest[i]!=null)?axRest[i]:0, v=axLive[i]-rest;
     const yy=y+134+i*26, bw=140, bx=x+112;
@@ -5507,6 +5532,14 @@ function drawRawInput(){
     ctx.fillRect(v<0?bx+half-w:bx+half,yy-10,Math.max(PIXEL_K,w),PIXEL_K*2);
     txt(v.toFixed(2),x+W,yy,{size:15,weight:700,font:F_MONO,align:'right',
         col:'rgba(138,131,119,0.9)'});
+  }
+  {
+    const code=bindCode(), yy=y+134+Math.min(axLive.length,10)*26+34;
+    txt('PANEL  WIRING  —  SEND THIS BACK TO BAKE IT IN',x,yy,
+        {size:14,weight:800,ls:'2px',font:F_MONO,col:'rgba(138,131,119,0.8)'});
+    code.split('  ').forEach((part,i)=>
+      txt(part,x+(i%2)*168,yy+26+Math.floor(i/2)*24,
+          {size:14,weight:700,ls:'1px',font:F_MONO,col:'rgba(214,206,192,0.85)'}));
   }
   /* Which axis is actually moving, named outright. This is the one fact needed to bind a
      stick that reports itself in an unexpected way, and reading it off a bar chart is
