@@ -3145,9 +3145,12 @@ function drawPoster(){
       ctx.fillRect(Math.round(cxx-r0),Math.round(cyy-PIXEL_K/2),r0*2,PIXEL_K);
       ctx.fillRect(Math.round(cxx-PIXEL_K/2),Math.round(cyy-r0),PIXEL_K,r0*2);
     }
-    // a pale rake across the whole screen every seven seconds or so
+    /* A pale rake across the whole screen every seven seconds or so — the roll bar of a tube
+       that is not quite in sync. It belongs to the tube, so it lives and dies with the tube:
+       K turns off the barrel, the fringing and the vignette, and it used to keep sweeping over
+       a picture that had stopped pretending to be a CRT at all. */
     const ph=(T*0.16)%1.7;
-    if(ph<1){
+    if(crtOn&&ph<1){
       const band=Math.round(VH*0.22), sy=Math.round(-band+ph*(VH+band*2));
       const g=ctx.createLinearGradient(0,sy,0,sy+band);
       g.addColorStop(0,'rgba(127,212,240,0)');
