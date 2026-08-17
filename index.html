@@ -5099,16 +5099,16 @@ function castPortrait(img,x,y,name,flip){
    name and age all travel together, which is what lets the shuffle bag deal them like cards.
    Ages come from the artwork rather than from a die — the face is 52, so the caption says 52. */
 const PATIENTS=[
-  {file:'patient-01.png', name:'DEREK',  age:28},
-  {file:'patient-02.png', name:'PRIYA',  age:35},
-  {file:'patient-03.png', name:'KWAME',  age:52},
-  {file:'patient-04.png', name:'ESTHER', age:61},
-  {file:'patient-05.png', name:'TOMAS',  age:41},
-  {file:'patient-06.png', name:'AISHA',  age:24},
-  {file:'patient-07.png', name:'JONAS',  age:67},
-  {file:'patient-08.png', name:'MAYA',   age:46},
-  {file:'patient-09.png', name:'HIRO',   age:33},
-  {file:'patient-10.png', name:'CLARA',  age:58},
+  {file:'patient-01.png', name:'PRIYA',  age:35},   // brown wavy hair, green top
+  {file:'patient-02.png', name:'LENA',   age:29},   // dark ponytail, blue shirt
+  {file:'patient-03.png', name:'ESTHER', age:58},   // auburn curls, pink knit
+  {file:'patient-04.png', name:'TOMAS',  age:41},   // bearded, white tee
+  {file:'patient-05.png', name:'AISHA',  age:24},   // locs, yellow top
+  {file:'patient-06.png', name:'KWAME',  age:52},   // greying, grey shirt
+  {file:'patient-07.png', name:'JONAS',  age:67},   // white hair and moustache
+  {file:'patient-08.png', name:'DEREK',  age:28},   // young, blue tee
+  {file:'patient-09.png', name:'HIRO',   age:33},   // glasses, dark grey
+  {file:'patient-10.png', name:'CLARA',  age:61},   // grey hair, glasses, maroon
 ];
 PATIENTS.forEach(p=>{ p.img=new Image(); p.ok=false;
   p.img.onload=()=>{p.ok=true;}; p.img.onerror=()=>{p.ok=false;}; p.img.src=p.file; });
