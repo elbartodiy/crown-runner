@@ -506,6 +506,22 @@ let axRest=null, axRestRaw=null, axLive=[], padLive=[], padName='';
    taps are latched separately. So anything found pressed at rest is ignored until it is released
    at least once, and the attract screen says so out loud. */
 let padStuck=null;
+/* A pad button or an axis may drive one action and one only. A stored binding from before the
+   collision filter existed can have the same input on two rows — on this cabinet LEFT and UP
+   both read AXIS 1-, so pushing the stick sideways moved the menu selection up and down. The
+   earlier action in BIND_ACTS keeps it, which puts left and right ahead of up and down: the
+   stick's horizontal stays horizontal, and the vertical falls back to whatever else it has. */
+function dedupeBind(b){
+  const pads=new Set(), axes=new Set();
+  const key=a=>a.i+':'+(a.val!==undefined?('v'+a.val.toFixed(2)):('s'+a.sign));
+  for(const act of BIND_ACTS){
+    const d=b[act]; if(!d) continue;
+    d.pads=(d.pads||[]).filter(i=>!pads.has(i)&&(pads.add(i),true));
+    d.axes=(d.axes||[]).filter(a=>{ const k=key(a);
+      if(axes.has(k)) return false; axes.add(k); return true; });
+  }
+  return b;
+}
 let BIND=(()=>{
   try{
     const j=JSON.parse(localStorage.getItem(BIND_KEY));
@@ -514,6 +530,7 @@ let BIND=(()=>{
       for(const a of BIND_ACTS)
         if(!j[a]||!Array.isArray(j[a].codes))
           j[a]=JSON.parse(JSON.stringify(BIND_DEFAULT[a]));
+      dedupeBind(j);
       return j;
     }
   }catch(e){}
@@ -5474,6 +5491,20 @@ function bindTick(){
                         ? 'HAT '+axisTap.i+' @'+axisTap.val
                         : 'AXIS '+axisTap.i+(axisTap.sign>0?'+':'-')))
                    : codeLabel(keyTap,padTap)};
+      /* One physical input, one action. The keyboard layer has had a collision filter since
+         the beginning — rebuildKbd strips a code that has been bound elsewhere — but pads and
+         axes had none, so a stick could end up driving LEFT and UP at once. On this cabinet it
+         did: both read AXIS 1-, and pushing the stick sideways moved the menu selection up and
+         down. Whatever was just captured is removed from every other action. */
+      for(const other of BIND_ACTS){
+        if(other===act) continue; const d=BIND[other]; if(!d) continue;
+        if(padTap!==null)  d.pads =(d.pads ||[]).filter(i=>i!==padTap);
+        if(axisTap!==null) d.axes =(d.axes ||[]).filter(a=>
+          !(a.i===axisTap.i &&
+            (axisTap.val!==undefined
+              ? (a.val!==undefined && Math.abs(a.val-axisTap.val)<0.15)
+              : a.sign===axisTap.sign)));
+      }
       keyTap=null; padTap=null; axisTap=null; U.capture=null; U.saved=1.2;
       saveBind(); SFX.lock();
     }
