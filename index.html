@@ -5093,6 +5093,26 @@ function castPortrait(img,x,y,name,flip){
   }
   return {w,h};
 }
+/* ── THE PATIENTS, PHOTOGRAPHED ─────────────────────────────────────────────
+   Ten portraits at 80x120, the same size and the same treatment as Jim and the intern, so the
+   cast stops being two photographs and eight drawings. Each one is a fixed person: index, face,
+   name and age all travel together, which is what lets the shuffle bag deal them like cards.
+   Ages come from the artwork rather than from a die — the face is 52, so the caption says 52. */
+const PATIENTS=[
+  {file:'patient-01.png', name:'DEREK',  age:28},
+  {file:'patient-02.png', name:'PRIYA',  age:35},
+  {file:'patient-03.png', name:'KWAME',  age:52},
+  {file:'patient-04.png', name:'ESTHER', age:61},
+  {file:'patient-05.png', name:'TOMAS',  age:41},
+  {file:'patient-06.png', name:'AISHA',  age:24},
+  {file:'patient-07.png', name:'JONAS',  age:67},
+  {file:'patient-08.png', name:'MAYA',   age:46},
+  {file:'patient-09.png', name:'HIRO',   age:33},
+  {file:'patient-10.png', name:'CLARA',  age:58},
+];
+PATIENTS.forEach(p=>{ p.img=new Image(); p.ok=false;
+  p.img.onload=()=>{p.ok=true;}; p.img.onerror=()=>{p.ok=false;}; p.img.src=p.file; });
+
 const JIM=new Image(); let jimOK=false;
 JIM.onload=()=>{jimOK=true;}; JIM.onerror=()=>{jimOK=false;};
 JIM.src='cast-jim.png';
@@ -5182,217 +5202,15 @@ function drawJim(){
    crowd into a set of caricatures; rolled apart, the room just looks like a room. Age is the
    one axis that reaches into the others, because it genuinely does: hair greys, and the ten
    year olds are shorter in frame. */
-const SKIN=['#F6D3B0','#EBB98F','#D89C70','#BC7F52','#8E5A38','#66402A'];
-const HAIR=['#1E1A16','#3A2A1E','#5A3A22','#8A4A1E','#C4661E','#D9AE58','#8E8E92','#E4E0D8'];
-const TOPC=['#0E86D4','#EB0045','#57B89A','#EFE9DA','#7A808A','#2A2A33','#F0536B','#3D5A8A'];
-/* Adults only. A crown on a ten-year-old is the wrong picture for this cabinet — permanent
-   molars are barely in at that age and the case a stand wants to show is an adult keeping a
-   tooth in one visit. The range starts where consenting adult patients start. */
-const AGES=[22,28,35,42,50,58,66,74];
-function lcg(seed){ let s=(seed*2654435761)>>>0;
-  return ()=>{ s=(s*1664525+1013904223)>>>0; return s/4294967296; }; }
-function makePatient(i,salt){
-  const r=lcg(i*7919+salt*104729);
-  const age=AGES[Math.floor(r()*AGES.length)];
-  const fem=r()<0.5;
-  const skin=Math.floor(r()*SKIN.length);
-  /* Grey arrives with age rather than being rolled against it: over fifty most of the ramp is
-     grey or white, under twenty none of it is. */
-  let hair;
-  if(age>=55) hair = r()<0.75 ? 6+Math.floor(r()*2) : Math.floor(r()*6);
-  else if(age>=45) hair = r()<0.35 ? 6 : Math.floor(r()*6);
-  else hair = Math.floor(r()*6);
-  const style=fem ? [1,2,3,4][Math.floor(r()*4)] : [0,1,2,5][Math.floor(r()*4)];
-  return {age,fem,skin:SKIN[skin],skinIx:skin,hair:HAIR[hair],
-          style,                                   // 0 crop 1 short 2 curls 3 long 4 bun 5 bald
-          top:TOPC[Math.floor(r()*TOPC.length)],
-          topStyle:Math.floor(r()*4),              // 0 tee 1 collar 2 v-neck 3 dress/blouse
-          glasses:(age>=45&&r()<0.5)||(age<45&&r()<0.12),
-          beard:!fem&&age>=20&&r()<0.35,
-          gap:1+Math.floor(r()*3)};                // which tooth is missing, never an edge one
-}
-/* Head and shoulders on a 64 x 78 grid, drawn at u = PIXEL_K like everything else — so it is
-   bigger by being authored bigger, not by using fatter pixels. Three pairs on the screen rather
-   than eight buys the room, and it buys the thing that matters: the smile is 24 blocks across,
-   so a missing tooth is twelve screen pixels of dark against enamel and you see it without
-   looking for it. `after` closes the gap and changes nothing else. */
-const PT_W=64, PT_H=78;
-/* The head is a row profile, not a box. Each row states its own half-width, so the cranium
-   rounds, the temples are the widest point and the jaw tapers to a chin — and because the
-   half-widths change progressively, the silhouette reads as a curve rather than as a stack of
-   steps. Light comes from the upper left, as it does everywhere else in this game: the left rim
-   is one step up the skin ramp, the right edge one step down, and there is a contact shadow
-   under the hair and under the jaw. The old drawing was a rectangle of skin with a keyline and
-   one 12%-alpha strip on a cheek, which is why it read as a mask rather than a face. */
-/* ── THE HEAD ───────────────────────────────────────────────────────────────
-   A skull, not an egg. The previous profile was one smooth taper from crown to chin, which
-   is why it read as a shape rather than a head: no brow, no cheekbone, no angle of the jaw.
-   This one states each landmark and lets the widths between them do the rest —
+/* The drawn patients are gone — 210 lines of them: the skin, hair and clothing ramps, the
+   independent-axis roller, the row-profile skull, and every attempt at a face that did not
+   frighten anybody. They are replaced by ten photographed portraits at the same 80x120 as Jim
+   and the intern, so the cast is one medium rather than two. A generated face on a 28-cell
+   grid was never going to sit beside a photograph without looking like a different game.
 
-     crown        rounds in over four rows
-     cranium      the widest part of a front view, held through the brow and the eyes
-     cheekbone    one step in, held
-     cheek        narrowing
-     jaw angle    a TWO-cell step, the one deliberate corner in the outline
-     chin         flat, not pointed
-
-   Height is 39 rows against 28 of width — about 1.4, which is what a front-on head measures.
-   The old one was 1.29 and read squat. */
-const PT_HEAD=(()=>{
-  const w=[]; const put=(n,v)=>{ for(let i=0;i<n;i++) w.push(v); };
-  put(1,8); put(1,10); put(1,11); put(1,12); put(2,13);   // crown
-  put(12,14);                                             // cranium, brow, eyes
-  put(5,13);                                              // cheekbone
-  put(3,12);                                              // cheek
-  put(2,11);                                              // towards the jaw
-  put(2,9);                                               // the angle — a corner on purpose
-  put(2,8); put(2,7); put(3,6); put(2,6);                   // jaw to chin — flat, not a point
-  /* The tail used to run down to 4, which is eight cells of chin: a teardrop, not a face.
-     A front-on chin is about as wide as the mouth, and the mouth here is nine. */
-  return w;
-})();
-const PT_TOP=8;
-const skTone=(p,d)=>SKIN[clamp((p.skinIx===undefined?2:p.skinIx)+d,0,SKIN.length-1)];
-function drawPatient(ox,oy,u,p,after,happy){
-  const P=pxPen(ox,oy,u), K='#0A0808';
-  const HW=(y)=>{ const i=y-PT_TOP; return (i<0||i>=PT_HEAD.length)?0:PT_HEAD[i]; };
-  const CXC=32, chin=PT_TOP+PT_HEAD.length;
-  /* THREE tones of skin and one rim. That is the whole palette of this face. The last version
-     had four plus a cheek highlight plus separate shadows under the hair, the jaw and the lip —
-     on a head 28 cells wide that is not modelling, it is noise, and noise is what "dirty"
-     means. Light from the upper left, as everywhere else in this game. */
-  const lit=skTone(p,-1), loc=p.skin, shd=skTone(p,1), rim=skTone(p,2);
-  const hairDk='#1E1A16';
-
-  /* ── shoulders: a profile per row, rising fast off the neck and easing out to the arm ── */
-  const sy=chin+5;
-  const SHW=(y)=>Math.round(7+Math.sqrt(clamp((y-sy)/9,0,1))*23);
-  for(let y=sy;y<PT_H;y++){
-    const hw=SHW(y);
-    P(CXC-hw,y,hw*2,1,p.top);
-    P(CXC-hw,y,4,1,'rgba(255,255,255,0.10)');
-    P(CXC+hw-4,y,4,1,'rgba(10,12,16,0.24)');
-  }
-  for(let y=sy;y<PT_H;y++){
-    const hw=SHW(y), up=SHW(y-1);
-    P(CXC-hw-1,y,1,1,K); P(CXC+hw,y,1,1,K);
-    if(y>sy&&up<hw){ P(CXC-hw-1,y-1,hw-up+1,1,K); P(CXC+up,y-1,hw-up+1,1,K); }
-  }
-  P(CXC-SHW(sy),sy-1,SHW(sy)*2,1,K);
-  if(p.topStyle===1){                                  // an open collar
-    P(CXC-9,sy,5,7,'#EFE9DA'); P(CXC+4,sy,5,7,'#EFE9DA');
-    P(CXC-9,sy,5,1,K);         P(CXC+4,sy,5,1,K);
-    P(CXC-2,sy,4,8,K);
-  }
-  if(p.topStyle===2){ P(CXC-5,sy,10,7,loc); P(CXC-5,sy,10,1,K); }
-  if(p.topStyle===3){
-    for(let y=sy+3;y<PT_H;y++){ const hw=SHW(y);
-      P(CXC-hw+5,y,1,1,'rgba(10,12,16,0.28)'); P(CXC+hw-6,y,1,1,'rgba(10,12,16,0.28)'); }
-  }
-
-  // ── neck: narrower than the jaw, and in the head's shadow ──
-  for(let y=chin-2;y<sy;y++) P(CXC-4,y,8,1,shd);
-  P(CXC-4,chin-2,8,1,rim);
-
-  // ── the head: three tones, nothing else ──
-  for(let y=PT_TOP;y<chin;y++){
-    const hw=HW(y);
-    P(CXC-hw,y,hw*2,1,loc);
-    P(CXC-hw,y,4,1,lit);                               // the lit plane, upper left
-    P(CXC+hw-3,y,3,1,shd);                             // the plane turning away
-  }
-  /* A coloured keyline: darkest skin on the lit side, ink only where the head genuinely goes
-     dark. Ink the whole way round makes a mask of it. */
-  for(let y=PT_TOP;y<chin;y++){
-    const hw=HW(y), up=HW(y-1), dn=HW(y+1);
-    P(CXC-hw-1,y,1,1,rim); P(CXC+hw,y,1,1,K);
-    if(up<hw){ P(CXC-hw-1,y-1,hw-up+1,1,rim); P(CXC+up,y-1,hw-up+1,1,K); }
-    if(dn<hw){ P(CXC-hw-1,y+1,hw-dn+1,1,rim); P(CXC+dn,y+1,hw-dn+1,1,K); }
-  }
-
-  /* ── hair: it sits ON the skull, so it is wider than the skull ──────────────
-     Drawn inside the outline it looked painted on. It now carries a cell or two of volume at
-     the crown, easing to nothing at the hairline, with its own keyline where it overhangs. */
-  const S=p.style;
-  const VOL={0:1,1:1,2:2,3:2,4:1,5:0}[S]||0;
-  const capTo=PT_TOP+(S===2?14:11);
-  const hy0=PT_TOP-(S===0?0:1);
-  if(S===5){
-    for(let y=PT_TOP;y<PT_TOP+4;y++) P(CXC-HW(y)+4,y,5,1,lit);   // the crown catches the light
-  } else {
-    const hhw=(y)=>{
-      const base=(y>=PT_TOP)?HW(y):Math.max(3,HW(PT_TOP)-(PT_TOP-y)*3);
-      const t=clamp((capTo-y)/(capTo-hy0),0,1);
-      return base+Math.round(VOL*Math.sqrt(t));
-    };
-    for(let y=hy0;y<capTo;y++){
-      const hw=hhw(y);
-      P(CXC-hw-1,y,1,1,K); P(CXC+hw,y,1,1,K);
-      P(CXC-hw,y,hw*2,1,p.hair);
-      P(CXC+hw-3,y,3,1,hairDk);
-    }
-    P(CXC-hhw(hy0),hy0-1,hhw(hy0)*2,1,K);
-    // a hairline that dips at the temples rather than cutting straight across
-    P(CXC-HW(capTo),capTo,4,1,p.hair); P(CXC+HW(capTo)-4,capTo,4,1,hairDk);
-    if(S===1||S===3){                                   // sideburns, or length down the sides
-      const to=S===3?chin-3:capTo+3;
-      for(let y=capTo;y<to;y++){ const hw=HW(y);
-        P(CXC-hw,y,S===3?4:2,1,p.hair);
-        P(CXC+hw-(S===3?4:2),y,S===3?4:2,1,hairDk); }
-    }
-    if(S===4){ P(CXC-4,hy0-5,8,5,p.hair); P(CXC-4,hy0-5,8,1,K); }   // a bun
-  }
-
-  /* ── eyes: dark, with one lit cell. No sclera ──────────────────────────────
-     A block of white at this scale is a stare, and a stare on every face is what made a sheet
-     of these unpleasant. One brow sits a row higher: exact symmetry is uncanny by itself, and
-     the offset is keyed to the patient so it holds still. */
-  const ey=PT_TOP+17, tilt=p.age%2;
-  P(CXC-11,ey-3-tilt,6,1,hairDk); P(CXC+5,ey-3,6,1,hairDk);
-  /* Three rows, not two. At two the eye is a slit and every patient looked half asleep. */
-  P(CXC-10,ey-1,4,1,shd);      P(CXC+6,ey-1,4,1,shd);        // the lid
-  P(CXC-10,ey,4,3,'#1E1A16');  P(CXC+6,ey,4,3,'#1E1A16');
-  P(CXC-10,ey,1,1,lit);        P(CXC+6,ey,1,1,lit);          // catchlight, upper left
-  if(p.glasses){
-    P(CXC-12,ey-2,7,1,K); P(CXC-12,ey+3,7,1,K);
-    P(CXC-12,ey-2,1,6,K); P(CXC-6,ey-2,1,6,K);
-    P(CXC+5,ey-2,7,1,K);  P(CXC+5,ey+3,7,1,K);
-    P(CXC+5,ey-2,1,6,K);  P(CXC+11,ey-2,1,6,K);
-    P(CXC-5,ey,5,1,K);
-  }
-  // ── nose: a shadow, and the shadow it drops. Nothing lit. ──
-  P(CXC+1,ey+4,1,4,shd); P(CXC-1,ey+7,3,1,shd);
-
-  const my=PT_TOP+27;
-  /* ── beard: a mass on the jaw, drawn before the mouth so the mouth cuts it ── */
-  if(p.beard){
-    for(let y=ey+6;y<my-2;y++){ const hw=HW(y);
-      P(CXC-hw,y,3,1,p.hair); P(CXC+hw-3,y,3,1,hairDk); }
-    for(let y=my-2;y<chin;y++){ const hw=HW(y);
-      const ins=y<my+2?5:1;
-      P(CXC-hw+ins,y,(hw-ins)*2,1,p.hair);
-      P(CXC+hw-ins-3,y,3,1,hairDk); }
-  }
-
-  /* ── the smile: a closed curve, enamel in the middle three cells only ────── */
-  const mw=4+(p.age%2), mx0=CXC-mw, mx1=CXC+mw;
-  for(let x=mx0;x<=mx1;x++){
-    const t=(x-CXC)/mw, lift=Math.round(t*t*2), mid=Math.abs(x-CXC)<=1;
-    P(x,my-lift,1,1,'#7A3038');
-    P(x,my-lift+1,1,1, mid ? (after?'#EFE4D2':'#180C10') : '#5E2733');
-    P(x,my-lift+2,1,1,shd);
-  }
-}
-
-/* One patient, not a wall of them. A grid of eight pairs was a chart; one face with something
-   to say is a person, and a person is what the shift was actually made of. The rest are still
-   counted underneath, because the number is the claim and the face is the evidence for it.
-
-   The quote is the patient's, in the paper language the rest of the game already speaks — the
-   case slip, the sponsor plate — rather than as a floating caption. */
-/* Split by sex, because the name was drawn from one list while the figure was rolled from
-   another — so a bald man with a full beard could be captioned CLARA, and the card stopped
-   being a person and became a bug. `SAM` sits in both lists on purpose. */
+   What the roller bought — that patients never repeated as a set of caricatures — is now
+   bought by the shuffle bag instead: ten fixed people dealt in a shuffled order, everyone
+   before anyone twice. */
 const NAMES_F=['MAYA','PRIYA','ANNA','LENA','SOFIA','GRACE','NINA','AISHA','RUTH','IVY',
                'CLARA','FATIMA','JUNE','ESTHER','MEI','ZARA','SAM'];
 const NAMES_M=['DEREK','TOMAS','KWAME','HIRO','OMAR','MATEO','JONAS','ELIAS','NOAH','ANDRE',
@@ -5414,7 +5232,7 @@ const QUOTES=[
 
    PATIENT_POOL is the size of the roster. Drop in real photographed portraits and set this to
    however many there are — nothing else has to change. */
-const PATIENT_POOL=24;
+const PATIENT_POOL=10;   // one per photographed portrait
 function shuffleBag(n){
   let bag=[], last=-1;
   return ()=>{
@@ -5445,12 +5263,8 @@ function drawTestimonial(){
   /* Drawn once per credit, not once per frame: the card is redrawn sixty times a second and
      the person on it must not change while somebody is reading their name. */
   if(G.patientIx===undefined){ G.patientIx=nextPatient(); G.quoteIx=nextQuote(); }
-  /* The index alone identifies the person — salt is fixed — so patient 7 is the same patient 7
-     in every session, with the same face and the same name. A person has one name. */
-  const p=makePatient(G.patientIx,1);
-  const pool=p.fem?NAMES_F:NAMES_M;
-  const name=pool[G.patientIx%pool.length];
-  const quote=QUOTES[G.quoteIx];
+  const PT=PATIENTS[G.patientIx%PATIENTS.length];
+  const name=PT.name, quote=QUOTES[G.quoteIx];
 
   /* The count moved to the subline: at gen 2 the headline is 73px a character, and
      'ONE OF 8 HAPPY PATIENTS' measured 1659px against 1620 of usable rail — it ran off the
@@ -5481,7 +5295,7 @@ function drawTestimonial(){
      The old layout left sixteen pixels between the caption and the card's own edge and
      twenty-eight between the card and the tally — which is why every line looked stuck to the
      next one. Now: 100 under the subline, 48 under the caption, 140 above the tally. */
-  const u=PIXEL_K, pw=PT_W*u, ph=PT_H*u;
+  const u=PIXEL_K, pw=80*u, ph=120*u;      // the photograph's own size, one block per pixel
   const cy=400, cardH=470;
   const fx=RAIL+40, fw=pw+96;
   ctx.fillStyle='rgba(0,0,0,0.5)'; ctx.fillRect(fx+8,cy+10,fw,cardH);
@@ -5493,7 +5307,8 @@ function drawTestimonial(){
   // the face sits on its own panel inside the card, the way a photo would
   const fy=cy+86;
   ctx.fillStyle='rgba(20,22,28,0.92)'; ctx.fillRect(fx+40,fy-10,pw+16,ph+20);
-  drawPatient(fx+48,fy,u,p,true,true);
+  ctx.imageSmoothingEnabled=false;
+  if(PT.ok) ctx.drawImage(PT.img,0,0,80,120,fx+48,fy,pw,ph);
   /* A glint on one tooth, on the same cycle as the crown on the title art. It is the only
      moving thing on the screen, so it is what the eye lands on — and what it lands on is the
      result of the whole shift. */
@@ -5509,7 +5324,7 @@ function drawTestimonial(){
   }
   const capY=fy+ph+28;                       // measured off the photo, not off the card
   rule(fx+28,capY,fx+fw-28,'rgba(110,106,96,0.5)',2);
-  txt(name+',  '+p.age,fx+fw/2,capY+42,
+  txt(name+',  '+PT.age,fx+fw/2,capY+42,
       {size:22,weight:800,col:CFG.col.ink,align:'center',ls:'3px',font:F_MONO,max:fw-56});
   txt('SAME-DAY CROWN',fx+fw/2,capY+74,
       {size:15,weight:700,col:CFG.col.red,align:'center',ls:'0px',font:F_MONO,max:fw-56});
@@ -5528,7 +5343,7 @@ function drawTestimonial(){
     txt(l,qx+34,top+i*LN,
         {size:26,weight:800,col:CFG.col.ink,ls:'2px',font:F_MONO,max:qw-68}));
   rule(qx+34,qy+cardH-96,qx+qw-34,'rgba(110,106,96,0.5)',2);
-  txt(name+',  '+p.age+'  ·  PATIENT, THIS SHIFT',qx+34,qy+cardH-52,
+  txt(name+',  '+PT.age+'  ·  PATIENT, THIS SHIFT',qx+34,qy+cardH-52,
       {size:17,weight:700,col:'rgba(110,106,96,0.95)',ls:'3px',font:F_MONO});
   txt('ONE VISIT',qx+qw-34,qy+cardH-52,
       {size:17,weight:800,col:CFG.col.red,align:'right',ls:'4px',font:F_MONO});

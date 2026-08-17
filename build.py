@@ -17,7 +17,8 @@ SRC  = os.path.join(HERE, 'index.html')
 OUT  = os.path.join(HERE, 'crown-runner-standalone.html')
 
 IMAGES = ['glidewell-mark.png', 'glidewell-logo.png', 'attract-poster.png',
-          'cast-jim.png', 'cast-intern.png']
+          'cast-jim.png', 'cast-intern.png'] + \
+         ['patient-%02d.png' % i for i in range(1, 11)]
 # Slot -> file. A slot whose file is absent is dropped from the map entirely and
 # picked up at runtime by MUS_FALLBACK, which hops calm -> stage1. It must NOT be
 # emitted as a second copy of another track: two <audio> elements on one source
