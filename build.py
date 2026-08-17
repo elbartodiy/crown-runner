@@ -44,8 +44,20 @@ def transcode(src):
     return dst
 
 
+# mimetypes maps .m4a to audio/mp4a-latm, which is a raw-AAC-stream type no browser accepts
+# for an MP4 container. Shipping that made every <audio> element error on its own source, the
+# slot got retired, the fallback chain ran out and the cabinet was silent — with nothing in the
+# console to say why, because the game swallows the play() rejection. The ad-hoc build this
+# script replaced hardcoded audio/mp4 and was right to.
+MIME = {'.m4a': 'audio/mp4', '.mp3': 'audio/mpeg', '.png': 'image/png'}
+PLAYABLE = {'audio/mp4', 'audio/mpeg', 'audio/ogg', 'audio/wav'}
+
+
 def data_uri(path):
-    mime = mimetypes.guess_type(path)[0] or 'application/octet-stream'
+    ext = os.path.splitext(path)[1].lower()
+    mime = MIME.get(ext) or mimetypes.guess_type(path)[0] or 'application/octet-stream'
+    if mime.startswith('audio/') and mime not in PLAYABLE:
+        sys.exit('refusing to inline %s as %s — no browser will decode that' % (path, mime))
     with open(path, 'rb') as f:
         return 'data:%s;base64,%s' % (mime, base64.b64encode(f.read()).decode('ascii'))
 
