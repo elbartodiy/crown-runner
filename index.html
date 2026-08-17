@@ -1006,6 +1006,8 @@ const implanting=()=>G&&G.stage==='IMPLANT';
 const practising=()=>!!(G&&G.practice);
 const drill=()=>G&&G.practice?G.practice.id:null;
 const PRACTICE_OUT=1.7;     // a beat to register the last case before the cut
+const INTRO_HOLD=0.75;      // it sits in the middle long enough to be read
+const INTRO_RISE=0.9;       // then climbs to the band
 
 /* Three drills, each between the plates that teach it, and each one verb wide. A lesson that
    explains all three and then asks for all three at once is a lesson the player fails at the
@@ -1718,6 +1720,7 @@ function update(dt){
   }
   for(let i=objs.length-1;i>=0;i--) if(objs[i].dead) objs.splice(i,1);
 
+  if(G.practice) G.practice.intro=Math.min(INTRO_RISE+1,(G.practice.intro||0)+dt);
   if(G.practice&&G.practice.over>0){
     G.practice.over-=dt;
     if(G.practice.over<=0&&!G.practice.leaving){
@@ -3570,8 +3573,22 @@ function drawPlayHUD(){
     /* Top band, not the floor. Down there it ran through the implant queue, the
        figures and whatever was falling; up here the only other thing is the LEVEL
        readout in the corner, and there is nothing between it and the line label. */
-    ctx.globalAlpha=clamp(G.hintT,0,1);
-    txt(G.hint,PX,112,{size:25,weight:800,col:'rgba(242,236,223,0.85)',align:'center',ls:'6px'});
+    /* A drill's instruction arrives in the middle of the bore, where the eye already is,
+       and then climbs to the band and stays there. Delivered straight into the band it was
+       a line at the top of a screen nobody was looking at the top of; delivered only in the
+       middle it would sit over the teeth. It travels, so the same words teach the player
+       where instructions live from now on. */
+    const io=(practising()&&G.practice.intro!==undefined)
+             ? clamp((G.practice.intro-INTRO_HOLD)/INTRO_RISE,0,1) : 1;
+    const ease=io<1 ? 1-Math.pow(1-io,3) : 1;             // fast off the mark, settling in
+    const hy=Math.round(lerp(HZ+40,112,ease)/PIXEL_K)*PIXEL_K;
+    const hs=Math.round(lerp(40,25,ease));
+    /* Fade in on the intro clock, not on the rise. Keyed to `io` the line was invisible for
+       the whole hold — the pause exists so it can be READ, and it was reading nothing. */
+    const app=(practising()&&G.practice.intro!==undefined)
+              ? clamp(G.practice.intro/0.18,0,1) : 1;
+    ctx.globalAlpha=clamp(G.hintT,0,1)*app;
+    txt(G.hint,PX,hy,{size:hs,weight:800,col:'rgba(242,236,223,0.85)',align:'center',ls:'6px'});
     ctx.globalAlpha=1;
   }
   if(G.warn>0){
@@ -4119,14 +4136,16 @@ function startDrill(id){
   camReset();                      // nothing past the lesson is played zoomed
   newGame();                       // a clean bore, with nothing carried over
   G.tut=null;
-  G.practice={id, need:D.need, done:0, over:0, leaving:false};
+  G.practice={id, need:D.need, done:0, over:0, leaving:false, intro:0};
   /* Faster than the lesson's 45%, slower than the opening of a shift. The point is that
      there is time to look at a tooth before deciding, not that nothing moves. */
   G.speed=CFG.speed.base*0.58;
   G.spawnIn=1.2;
-  banner(D.banner,CFG.col.score);
-  /* hint() does not substitute — every caller does its own, and the brace is not in the face,
-     so an unsubstituted {FIRE} draws as ?FIRE? rather than as the letter on the cap. */
+  /* No banner. It said almost exactly what the instruction says, at the same moment, in a
+     bigger face — two messages for one idea, which is the mistake this screen keeps making.
+     The instruction arrives in the middle of the bore instead, and carries it alone.
+     hint() does not substitute — every caller does its own, and the brace is not in the
+     face, so an unsubstituted {FIRE} draws as ?FIRE? rather than the letter on the cap. */
   hint(btnSub(D.hint),4.5);
 }
 /* A drill is over. Either the next drill follows straight on, or the lesson picks up at the
