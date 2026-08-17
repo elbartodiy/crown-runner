@@ -5291,13 +5291,17 @@ function drawPatient(ox,oy,u,p,after,happy){
     P(CXC-hw,y,3,1,lit);                        // lit rim, upper left
     P(CXC+hw-2,y,2,1,shd);                      // turning away on the right
   }
-  // keyline: one cell outside the silhouette, stepped with it
+  /* A COLOURED keyline, not ink all the way round. Solid black on every edge turns a face
+     into a mask: the head stops being a volume and becomes a sticker cut out of the
+     background. The lit side takes the darkest skin tone — that reads as the form turning
+     away — and only the shadow side, where the head genuinely goes dark, takes ink. */
+  const rim=skTone(p,3);
   for(let y=PT_TOP;y<chin;y++){
     const hw=HW(y);
-    P(CXC-hw-1,y,1,1,K); P(CXC+hw,y,1,1,K);
+    P(CXC-hw-1,y,1,1,rim); P(CXC+hw,y,1,1,K);
     const up=HW(y-1), dn=HW(y+1);
-    if(up<hw) { P(CXC-hw-1,y-1,hw-up+1,1,K); P(CXC+up,y-1,hw-up+1,1,K); }
-    if(dn<hw) { P(CXC-hw-1,y+1,hw-dn+1,1,K); P(CXC+dn,y+1,hw-dn+1,1,K); }
+    if(up<hw) { P(CXC-hw-1,y-1,hw-up+1,1,rim); P(CXC+up,y-1,hw-up+1,1,K); }
+    if(dn<hw) { P(CXC-hw-1,y+1,hw-dn+1,1,rim); P(CXC+dn,y+1,hw-dn+1,1,K); }
   }
 
   /* ── hair ─────────────────────────────────────────────────────────────
@@ -5364,7 +5368,10 @@ function drawPatient(ox,oy,u,p,after,happy){
      brightest things on a face, so at this size they decide the expression on their own. The
      eye is an almond now: iris across most of it, one lit cell either side, and a lid of skin
      in shadow. Brows drop a row closer and stop being full-width bars. */
-  P(CXC-10,ey-3,5,1,hairDk); P(CXC+6,ey-3,5,1,hairDk);       // brows
+  /* One brow a row higher. Perfect symmetry is uncanny by itself, and the offset is keyed to
+     the patient so it holds still instead of flickering frame to frame. */
+  const tilt=p.age%2;
+  P(CXC-10,ey-3-tilt,5,1,hairDk); P(CXC+6,ey-3,5,1,hairDk);  // brows
   P(CXC-10,ey,4,3,'#1E1A16'); P(CXC+7,ey,4,3,'#1E1A16');     // the eye, mostly iris
   P(CXC-10,ey+1,1,1,'#EFE9DA'); P(CXC+10,ey+1,1,1,'#EFE9DA');// a catchlight either side
   P(CXC-10,ey-1,4,1,shd);     P(CXC+7,ey-1,4,1,shd);         // lid
@@ -5409,13 +5416,14 @@ function drawPatient(ox,oy,u,p,after,happy){
   const mw=4+(p.age%2), mx0=CXC-mw, mx1=CXC+mw;
   for(let x=mx0;x<=mx1;x++){
     const t=(x-CXC)/mw, lift=Math.round(t*t*2);
-    P(x,my-lift,1,1,'#7A3038');                        // upper lip
-    const gapCol = (!after && Math.floor((x-mx0)/3)===p.gap);
-    /* Warm off-white, not the brightest colour on the screen. #FFFBF2 next to skin is a
-       strip lamp, and it pulled the whole face into a grin. */
-    P(x,my-lift+1,1,1,gapCol?'#180C10':'#EFE4D2');     // the enamel: one row
-    P(x,my-lift+2,1,1,'#5E2733');                      // lower lip, deeper than the upper
-    P(x,my-lift+3,1,1,shd);                            // and its shadow on the chin
+    /* A closed curve, with enamel showing only in the middle three cells. A row of teeth
+       spanning the whole mouth is a rictus at this scale however carefully it is toned down —
+       and the card shows the same face over and over, so a rictus repeated is a horror film.
+       Three cells say "there is a tooth there" and let the lip do the smiling. */
+    const mid=Math.abs(x-CXC)<=1;
+    P(x,my-lift,1,1,'#7A3038');                        // the lip line, and it IS the smile
+    P(x,my-lift+1,1,1, mid ? ((!after)?'#180C10':'#EFE4D2') : '#5E2733');
+    P(x,my-lift+2,1,1,shd);                            // the shadow under the lower lip
   }
   /* The cheeks lift with it. Without this the mouth is a mark applied to a face; with it the
      face is doing something. */
