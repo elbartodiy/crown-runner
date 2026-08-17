@@ -5296,8 +5296,12 @@ function drawTestimonial(){
      twenty-eight between the card and the tally — which is why every line looked stuck to the
      next one. Now: 100 under the subline, 48 under the caption, 140 above the tally. */
   const u=PIXEL_K, pw=80*u, ph=120*u;      // the photograph's own size, one block per pixel
-  const cy=400, cardH=470;
-  const fx=RAIL+40, fw=pw+96;
+  /* One margin, used on all four sides of the photo. It used to be 40 at the sides, 22 above
+     and 18 below — three different numbers, and the eye reads the smallest one as the picture
+     being pushed down in its frame. */
+  const PM=24;
+  const cy=340, cardH=580;
+  const fx=RAIL+40, fw=pw+16+PM*2;
   ctx.fillStyle='rgba(0,0,0,0.5)'; ctx.fillRect(fx+8,cy+10,fw,cardH);
   ctx.fillStyle=CFG.col.paper;     ctx.fillRect(fx,cy,fw,cardH);
   ctx.strokeStyle=CFG.col.ink; ctx.lineWidth=4; ctx.strokeRect(fx,cy,fw,cardH);
@@ -5305,24 +5309,24 @@ function drawTestimonial(){
   txt('PATIENT',fx+fw/2,cy+38,
       {size:19,weight:800,col:'#FFF6E6',align:'center',ls:'5px',font:F_MONO});
   // the face sits on its own panel inside the card, the way a photo would
-  const fy=cy+86;
-  ctx.fillStyle='rgba(20,22,28,0.92)'; ctx.fillRect(fx+40,fy-10,pw+16,ph+20);
+  const fy=cy+54+PM+10;                   // header, margin, then the panel's own 10px inset
+  ctx.fillStyle='rgba(20,22,28,0.92)'; ctx.fillRect(fx+PM,fy-10,pw+16,ph+20);
   ctx.imageSmoothingEnabled=false;
-  if(PT.ok) ctx.drawImage(PT.img,0,0,80,120,fx+48,fy,pw,ph);
+  if(PT.ok) ctx.drawImage(PT.img,0,0,80,120,fx+PM+8,fy,pw,ph);
   /* A glint on one tooth, on the same cycle as the crown on the title art. It is the only
      moving thing on the screen, so it is what the eye lands on — and what it lands on is the
      result of the whole shift. */
   const tw=(T%2.6)/2.6;
   if(tw<0.16){
     const kk=Math.sin(tw/0.16*Math.PI);
-    const gx=fx+48+32*u, gy=fy+39*u;      // the teeth run x 25..39, y 36..41 in art pixels
+    const gx=fx+PM+8+32*u, gy=fy+39*u;      // the teeth run x 25..39, y 36..41 in art pixels
     glow(gx,gy,30*kk,'#FFF6E6',0.85*kk);
     ctx.fillStyle='rgba(255,255,255,'+(0.95*kk).toFixed(2)+')';
     const r0=Math.round(16*kk/PIXEL_K)*PIXEL_K;
     ctx.fillRect(Math.round(gx-r0),Math.round(gy-PIXEL_K/2),r0*2,PIXEL_K);
     ctx.fillRect(Math.round(gx-PIXEL_K/2),Math.round(gy-r0),PIXEL_K,r0*2);
   }
-  const capY=fy+ph+28;                       // measured off the photo, not off the card
+  const capY=fy+ph+10+PM;   // measured off the PANEL, so the margin below matches the sides                       // measured off the photo, not off the card
   rule(fx+28,capY,fx+fw-28,'rgba(110,106,96,0.5)',2);
   txt(name+',  '+PT.age,fx+fw/2,capY+42,
       {size:22,weight:800,col:CFG.col.ink,align:'center',ls:'3px',font:F_MONO,max:fw-56});
