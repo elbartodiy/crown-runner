@@ -5750,9 +5750,15 @@ function endGame(){
      operating, the next Jim is talking to you, with nothing in between to say the day had
      ended. Half a second each leg: a second for the whole handover, which is enough to read
      as a change of scene and short enough not to feel like waiting. */
+  /* The numbers go out at the whistle, not after the closing scene — a host that draws its
+     own ending needs them the moment the shift is over, not two screens later. */
+  host('shiftover',{score:G.score, teeth:G.seats, patients:Math.floor(G.seats/2),
+                    lost:G.lost, matches:G.matches, extractions:G.extracted,
+                    reachedSurgery:G.stage==='IMPLANT'});
   ending=true;
   wipeTo(()=>{
     ending=false;
+    if(hostEnding){ mode='ATTRACT'; idle=0; return; }   // the host is drawing the ending
     mode='OUTRO'; outro={step:0,ch:0,hold:0.5}; idle=0;
   },0.5);
 }
@@ -5765,16 +5771,38 @@ function host(event,extra){
   try{ window.parent.postMessage(Object.assign({game:'crown-runner',event},extra||{}),'*'); }
   catch(e){}
 }
+/* Set by the host when it intends to draw the ending itself. The game then stops at the
+   whistle: it reports the numbers and returns to its own attract screen, and everything after
+   the shift — Jim's closing words, the patient's testimonial, the leaderboard — is skipped.
+   A compilation almost certainly wants its own ending, and rewriting ours is worse for
+   everyone than being allowed to replace it. */
+let hostEnding=false;
+/* A name handed in from outside — a badge scanner, a launcher's login, anything. When it is
+   set the game stops asking for three initials: the score goes straight onto the board under
+   that name. Trimmed to what FONT5x7 can actually draw, because a glyph the face does not
+   have renders as a question mark and the board would show it forever. */
+let hostPlayer=null;
 addEventListener('message',e=>{
   const d=e.data;
   if(!d||d.game!=='crown-runner') return;
   if(d.cmd==='attract'){ mode='ATTRACT'; idle=0; }        // host wants the screen back
   if(d.cmd==='mute')   { musMuted=!!d.on; }
+  if(d.cmd==='config'&&d.outro!==undefined) hostEnding=(d.outro===false);
+  if(d.cmd==='player'){
+    const n=String(d.name||'').toUpperCase().replace(/[^A-Z0-9 .\-]/g,'').trim().slice(0,12);
+    hostPlayer=n||null;
+  }
 });
 function finishRound(){
   host('gameover',{score:G.score, teeth:G.seats, patients:Math.floor(G.seats/2),
-                   lost:G.lost, matches:G.matches, stage:G.stage});
-  if(lbQualifies(G.score)){ mode='ENTRY'; entry={pos:0,ch:[0,0,0],list:null,mine:-1}; }
+                   lost:G.lost, matches:G.matches, stage:G.stage, player:hostPlayer});
+  if(hostPlayer&&lbQualifies(G.score)){
+    // the player is already identified; asking them to spell three letters is a step backwards
+    const list=lbAdd(hostPlayer,G.score);
+    mode='OVER'; entry.list=list;
+    entry.mine=list.findIndex(r=>r.n===hostPlayer&&r.s===G.score);
+  }
+  else if(lbQualifies(G.score)){ mode='ENTRY'; entry={pos:0,ch:[0,0,0],list:null,mine:-1}; }
   else { mode='OVER'; entry.list=lbLoad(); entry.mine=-1; }
   idle=0;
 }
