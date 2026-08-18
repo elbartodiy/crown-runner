@@ -4197,7 +4197,7 @@ function tutProp(kind){
    start of the page teaches again. Finishing it and skipping it both count. */
 let taught=false;
 function enterPlay(){
-  newGame(); mode='PLAY'; idle=0;
+  newGame(); mode='PLAY'; idle=0; host('start');
   if(taught){ hint('SCAN THE CRACKED TEETH',3); return; }
   // a short opening gap: the first lesson has to land before a curious player scans
   G.tut={on:true,step:0,paused:false,seen:false,hlT:0,ch:0,rch:0,cool:0.6};
@@ -5756,7 +5756,24 @@ function endGame(){
     mode='OUTRO'; outro={step:0,ch:0,hold:0.5}; idle=0;
   },0.5);
 }
+/* Speaking to whatever is hosting us. A compilation needs two things from a game it embeds:
+   to know when a round has ended and with what, and to be able to take the screen back. The
+   game is otherwise a closed box — it fills the viewport, keeps the keyboard and never
+   finishes. Both messages are namespaced and harmless when nobody is listening. */
+function host(event,extra){
+  if(window.parent===window) return;
+  try{ window.parent.postMessage(Object.assign({game:'crown-runner',event},extra||{}),'*'); }
+  catch(e){}
+}
+addEventListener('message',e=>{
+  const d=e.data;
+  if(!d||d.game!=='crown-runner') return;
+  if(d.cmd==='attract'){ mode='ATTRACT'; idle=0; }        // host wants the screen back
+  if(d.cmd==='mute')   { musMuted=!!d.on; }
+});
 function finishRound(){
+  host('gameover',{score:G.score, teeth:G.seats, patients:Math.floor(G.seats/2),
+                   lost:G.lost, matches:G.matches, stage:G.stage});
   if(lbQualifies(G.score)){ mode='ENTRY'; entry={pos:0,ch:[0,0,0],list:null,mine:-1}; }
   else { mode='OVER'; entry.list=lbLoad(); entry.mine=-1; }
   idle=0;
