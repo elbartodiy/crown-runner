@@ -4160,12 +4160,14 @@ function drawAttract(){
   /* Who is playing, once a badge has been read — by the cabinet's shell before it launched
      us, or by the reader here. Inside the shell this screen is only up for a moment, so the
      line is mostly for the game standing on its own. */
+  /* No invitation to scan. On the cabinet the badge is read at the shell's own gate before
+     this screen is ever reached, so asking for it here would be asking twice — and asking for
+     something the player has already done reads as the machine not having noticed. When there
+     is no name there is simply nothing, and an operator checks the service screen's BADGE
+     READER block, which is where that question belongs. */
   if(playerOn()){
     txt('WELCOME',L,578,{size:15,weight:700,col:CFG.col.dim,ls:'6px',font:F_MONO});
     txt(drSub('{DR}'),L,626,{size:40,weight:800,col:CFG.col.score,ls:'5px',max:COLW+120});
-  } else if(Math.sin(T*1.8)>-0.5){
-    txt('SCAN  YOUR  BADGE  TO  PLAY  BY  NAME',L,606,
-        {size:15,weight:700,col:'rgba(138,131,119,0.75)',ls:'3px',font:F_MONO});
   }
 
   if(Math.sin(T*4.4)>-0.35)
@@ -5653,7 +5655,6 @@ function drawTestimonial(){
      the person on it must not change while somebody is reading their name. */
   if(G.patientIx===undefined){ G.patientIx=nextPatient(); G.quoteIx=nextQuote(); }
   const PT=PATIENTS[G.patientIx%PATIENTS.length];
-  const named=playerOn();
   const name=PT.name;
   /* drSub fills {DR} with "DR HOWARD" when a badge was read and with "DOCTOR" when none was,
      so one set of lines covers both and the note is always a note to somebody. */
@@ -5746,11 +5747,12 @@ function drawTestimonial(){
   ctx.fillStyle=CFG.col.red; ctx.fillRect(qx,qy,qw,54);
   /* "A NOTE FOR DOCTOR" is not a thing anybody writes, so with no name the card is addressed
      to the reader instead — the line underneath still says "doctor" out loud. */
+  /* The band carries the brand and nothing else. It used to caption the card "A NOTE FOR
+     DR HOWARD" — which the salutation underneath already says, in letters four times the size.
+     Two ways of saying one thing, and the small one was in the way. */
   gwLogo(qx+32,qy+27,15);
-  txt(named?drSub('A NOTE FOR {DR}'):'A NOTE FOR YOU',qx+62,qy+38,
+  txt('GLIDEWELL.IO',qx+62,qy+38,
       {size:19,weight:800,col:'#FFF6E6',ls:'5px',font:F_MONO,max:qw-96});
-  txt('GLIDEWELL.IO',qx+qw-34,qy+38,
-      {size:15,weight:800,col:'rgba(255,255,255,0.72)',align:'right',ls:'3px',font:F_MONO});
   /* The salutation and the compliment are the screen. Everything between them is why. */
   txt(drSub(note.hail),qx+34,qy+196,
       {size:96,weight:800,col:CFG.col.ink,ls:'2px',max:qw-68});
@@ -5759,9 +5761,11 @@ function drawTestimonial(){
         {size:24,weight:800,col:'rgba(30,30,30,0.86)',ls:'2px',font:F_MONO,max:qw-68}));
   txt(drSub(note.praise),qx+34,qy+452,
       {size:96,weight:800,col:CFG.col.red,ls:'2px',max:qw-68});
+  /* The foot carries one thing. It used to repeat "AISHA, 24 · PATIENT, THIS SHIFT" — and her
+     name, her age and the fact that she is a patient are all already printed under her
+     photograph, eighteen inches to the left. What is left is the only line on the card that is
+     not said anywhere else, stamped where a stamp goes. */
   rule(qx+34,qy+cardH-96,qx+qw-34,'rgba(110,106,96,0.5)',2);
-  txt(name+',  '+PT.age+'  ·  PATIENT, THIS SHIFT',qx+34,qy+cardH-52,
-      {size:17,weight:700,col:'rgba(110,106,96,0.95)',ls:'3px',font:F_MONO});
   txt('ONE VISIT',qx+qw-34,qy+cardH-52,
       {size:17,weight:800,col:CFG.col.red,align:'right',ls:'4px',font:F_MONO});
 
