@@ -594,20 +594,29 @@ addEventListener('pointerdown',()=>audioWake(),{passive:true});
 addEventListener('keydown',e=>{
   audioWake();
   if(e.code==='F11') return;
+  e.preventDefault();
+  /* The badge reader gets first refusal on every key: it takes printable characters (holding
+     them in case they turn out to be a scan) and the Enter a reader sends to end one.
+     Everything else — the panel, the keyboard mirror — falls straight through unchanged, which
+     includes the Enter the cabinet's shell synthesises to press START for the player. */
+  if(badgeKeyDown(e)) return;
   if(!e.repeat){
     tapped.add(e.code); keyTap=e.code;
-    if(/^Key[A-Z]$/.test(e.code)) Input.typed.push(e.code.slice(3));
     if(e.code==='Backspace') Input.typed.push('\b');
   }
-  Input.keys.add(e.code); e.preventDefault();
+  Input.keys.add(e.code);
 });
-addEventListener('keyup',e=>Input.keys.delete(e.code));
+addEventListener('keyup',e=>{
+  Input.keys.delete(e.code);
+  for(const k of keyHold) if(k.code===e.code) k.up=true;
+});
 addEventListener('blur',()=>Input.keys.clear());
 // a pad that arrives after the page has to be measured when it arrives, not before
 addEventListener('gamepadconnected',()=>{ axRest=null; axRestRaw=null; padStuck=null; });
 const held=arr=>arr.some(k=>Input.keys.has(k));
 
 function pollInput(){
+  keyRelease();            // printable presses that have waited out the reader's window
   let ax=0,sc=false,fr=false,sl=false,st=false,up=false,dn=false,lf=false,rt=false;
   /* Not just absent but throwing: inside an embed the gamepad feature is blocked
      by permissions policy and the call raises rather than returning nothing. */
@@ -752,9 +761,15 @@ let VOL=(()=>{
     if(j&&typeof j.music==='number'&&typeof j.sfx==='number')
       return {music:j.music, sfx:j.sfx, crt:j.crt!==false, fps:!!j.fps,
               swap:!!j.swap, swapSet:!!j.swapSet,
-              idle:(typeof j.idle==='number'?j.idle:60)};
+              idle:(typeof j.idle==='number'?j.idle:60),
+              /* -1 is "work out which field holds the name"; 0..5 pins it to one, for a badge
+                 whose layout the guesser gets wrong. Both are set on the service screen, beside
+                 a printout of the last scan, so nobody needs a developer to fix it. */
+              badgeField:(typeof j.badgeField==='number'?j.badgeField:-1),
+              badgeTitle:(j.badgeTitle||'always')};
   }catch(e){}
-  return {music:0.32, sfx:0.32, crt:true, fps:false, swap:false, swapSet:false, idle:60};
+  return {music:0.32, sfx:0.32, crt:true, fps:false, swap:false, swapSet:false, idle:60,
+          badgeField:-1, badgeTitle:'always'};
 })();
 function saveVol(){
   try{ localStorage.setItem(VOL_KEY,JSON.stringify(VOL)); }catch(e){}
@@ -1004,6 +1019,198 @@ const SFX={
 };
 
 /* ── LEADERBOARD ────────────────────────────────────────────────────────── */
+/* ── THE BADGE ──────────────────────────────────────────────────────────── */
+/* Who is at the cabinet. On the machine itself the shell has already read the badge before it
+   launches us — it drives the scanner over a serial port, parses the card and hands us
+   {cmd:'player', name} — so here that message is simply believed. The reader below is for the
+   game running on its own, off the standalone file, where a scanner is just a keyboard.
+
+   A barcode reader in keyboard mode types what it read as fast as USB will carry it and then
+   presses Enter. Two things tell it from a person: its characters land a few milliseconds
+   apart, and every printable key is HELD for a moment before the game is allowed to see it —
+   so the first characters of a badge can no longer leak through as button presses. Nothing the
+   panel sends is held; a stick and eight buttons are not keys. */
+const BADGE_GAP=48, BADGE_IDLE=220, BADGE_HOLD=75, BADGE_MIN=3;
+let badgeBuf='', badgeLast=0, badgeFast=0, badgeTimer=null;
+let keyHold=[];
+let BADGE=null, badgeFlash=0;
+
+const badgeLive=()=>badgeBuf.length>=BADGE_MIN&&badgeFast>=2;
+function badgeKeyDown(e){
+  if(e.repeat) return false;
+  if(e.code==='Enter'||e.code==='NumpadEnter'||e.code==='Tab'){
+    if(!badgeLive()) return false;
+    badgeEnd(); return true;
+  }
+  if(!(e.key&&e.key.length===1)) return false;
+  const now=nowMs(), gap=now-badgeLast;
+  if(gap>BADGE_GAP*4){ badgeBuf=''; badgeFast=0; }
+  else if(gap<=BADGE_GAP) badgeFast++;
+  badgeBuf+=e.key; badgeLast=now;
+  if(badgeTimer) clearTimeout(badgeTimer);
+  badgeTimer=setTimeout(badgeEnd,BADGE_IDLE);
+  keyHold.push({code:e.code,at:now,up:false});
+  return true;
+}
+function badgeEnd(){
+  if(badgeTimer){ clearTimeout(badgeTimer); badgeTimer=null; }
+  const raw=badgeBuf, live=badgeLive();
+  badgeBuf=''; badgeFast=0;
+  if(live&&raw.length>=BADGE_MIN) badgeTake(raw,'SCANNER');
+}
+/* Printable presses are promoted here rather than in the handler: a burst that turned out to be
+   a machine is dropped whole, anything else reaches the game one frame late. */
+function keyRelease(){
+  if(!keyHold.length) return;
+  const now=nowMs(), live=badgeLive(), keep=[];
+  for(const k of keyHold){
+    if(live) continue;
+    if(now-k.at<BADGE_HOLD){ keep.push(k); continue; }
+    tapped.add(k.code); keyTap=k.code;
+    if(/^Key[A-Z]$/.test(k.code)) Input.typed.push(k.code.slice(3));
+    if(!k.up) Input.keys.add(k.code);
+  }
+  keyHold=keep;
+}
+
+/* ── what a badge says ───────────────────────────────────────────────────── */
+/* The face on this build is hand-drawn: twenty-six letters, ten digits and a handful of marks.
+   The show is American and the badges are Latin, so the only thing that actually turns up which
+   the face cannot draw is an accent — and there are plenty of those on a US delegate list.
+   GARCÍA and MÜLLER would otherwise sit on the high-score table as rows of question marks for
+   the rest of the show, so the marks come off and the letter stays. */
+const BADGE_FOLD={'À':'A','Á':'A','Â':'A','Ã':'A','Ä':'A','Å':'A','Æ':'AE','Ç':'C',
+  'È':'E','É':'E','Ê':'E','Ë':'E','Ì':'I','Í':'I','Î':'I','Ï':'I','Ñ':'N',
+  'Ò':'O','Ó':'O','Ô':'O','Õ':'O','Ö':'O','Ø':'O','Œ':'OE','Š':'S','Ž':'Z',
+  'Ù':'U','Ú':'U','Û':'U','Ü':'U','Ý':'Y','ß':'SS','Ł':'L','Đ':'D','Ð':'D','Þ':'TH'};
+function badgeFold(s){
+  let out='';
+  for(const ch of String(s||'').toUpperCase()){
+    if(BADGE_FOLD[ch]!==undefined){ out+=BADGE_FOLD[ch]; continue; }
+    out += /[A-Z0-9 .,'()\/-]/.test(ch) ? ch : ' ';
+  }
+  return out.replace(/\s+/g,' ').trim();
+}
+const BADGE_SEPS=['|','^','\t',';','~',','];
+const BADGE_TITLES={DR:'DR','DR.':'DR',DOCTOR:'DR',PROF:'PROF','PROF.':'PROF',
+                    MR:'MR','MR.':'MR',MS:'MS','MS.':'MS',MRS:'MRS','MRS.':'MRS'};
+const BADGE_CRED=/^(DDS|DMD|MD|PHD|RDH|BDS|DDS\.|DMD\.|MD\.)$/i;
+const BADGE_NAMEKEY=/^(full ?name|name|attendee ?name|display ?name|first ?name|given ?name)$/i;
+function badgeClean(s){
+  return String(s||'').replace(/[\u0000-\u001F\u007F]/g,' ').replace(/\s+/g,' ').trim();
+}
+function badgeLooksLikeName(f){
+  const s=(f||'').trim();
+  return s.length>=2 && s.length<=48 && !/[@]/.test(s) && !/^https?:/i.test(s) &&
+         /[A-Za-zÀ-ɏЀ-ӿ]/.test(s) && !/^\d+$/.test(s);
+}
+function badgeFields(raw){
+  for(const sep of BADGE_SEPS) if(raw.indexOf(sep)>=0) return raw.split(sep).map(f=>f.trim());
+  return [raw];
+}
+/* The cards at this show are vCards — scanning the QR yields a contact record — and a staff
+   card is six bare digits. Both shapes are read the same way the cabinet's own shell reads
+   them, so whichever path a name arrives by, it is the same person. A keyboard wedge sends a
+   vCard as one line with the newlines eaten, so the tags are put back first. */
+const VCARD_TAGS=/(X-GLIDEWELL-ID|VERSION|BEGIN|EMAIL|END|TEL|ADR|ORG|TITLE|FN|N)((?:;[A-Za-z0-9=,\-]+)*):/g;
+function badgeVCard(raw0){
+  let r=String(raw0||'').trim();
+  if(!/BEGIN[:;]VCARD/i.test(r)&&!/^FN[^:]*:/im.test(r)) return null;
+  if(r.indexOf('\n')===-1) r=r.replace(VCARD_TAGS,'\n$1$2:').trim();
+  const get=re=>{ const m=r.match(re); return m?m[1].trim():''; };
+  const fn=get(/^FN[^:]*:(.*)$/im), n=get(/^N[^:]*:(.*)$/im);
+  const id=get(/^X-GLIDEWELL-ID[^:]*:(.*)$/im);
+  let last='', first='', prefix='';
+  if(n){ const q=n.split(';'); last=(q[0]||'').trim(); first=(q[1]||'').trim(); prefix=(q[3]||'').trim(); }
+  if(!first&&fn){
+    const t=fn.match(/^(dr|mr|mrs|ms|prof)\.?\s+/i);
+    const q=fn.replace(/^(dr|mr|mrs|ms|prof)\.?\s+/i,'').split(/\s+/);
+    first=q.shift()||''; last=q.join(' ');
+    if(t&&!prefix) prefix=t[1];
+  }
+  return (first||last) ? {name:(first+' '+last).trim(),prefix,id} : null;
+}
+function badgeEmployee(raw){
+  const m=String(raw||'').trim().match(/^[^0-9]{0,2}(\d{6})$/);
+  return m?('EMP-'+m[1]):'';
+}
+function badgeParse(raw){
+  const clean=badgeClean(raw);
+  let name='', id='', pre='';
+
+  const vc=badgeVCard(raw);
+  if(vc){ name=vc.name; pre=vc.prefix; id=vc.id; }
+  const emp=badgeEmployee(clean);
+  if(!name&&emp) id=emp;
+
+  if(!name&&/^[\[{]/.test(clean)){
+    try{
+      const j=JSON.parse(clean), o=Array.isArray(j)?(j[0]||{}):j;
+      for(const k in o) if(BADGE_NAMEKEY.test(k)&&badgeLooksLikeName(o[k])){ name=String(o[k]); break; }
+      if(!name&&(o.firstName||o.first))
+        name=[o.firstName||o.first,o.lastName||o.last].filter(Boolean).join(' ');
+      if(o.prefix) pre=String(o.prefix);
+      if(o.id!==undefined) id=String(o.id);
+    }catch(e){}
+  }
+
+  const fields=badgeFields(clean);
+  if(!name&&!emp){
+    const want=VOL.badgeField;
+    if(want>=0&&fields[want]!==undefined&&badgeLooksLikeName(fields[want])) name=fields[want];
+    else name=fields.find(badgeLooksLikeName)||'';
+  }
+  if(!id) id=(fields.find(f=>/^[A-Za-z]{0,3}\d{3,}$/.test(f))||'').trim();
+
+  if(name.indexOf(',')>=0){                       // "ASANOV, ELDAR" is a surname first
+    const p=name.split(',').map(x=>x.trim()).filter(Boolean);
+    if(p.length>=2) name=p[1]+' '+p[0];
+  }
+
+  let tok=badgeFold(name).split(' ').filter(Boolean);
+  let title='', cred=false;
+  if(pre) title=BADGE_TITLES[badgeFold(pre).replace(/\.$/,'')]||'';
+  if(tok.length&&BADGE_TITLES[tok[0]]){ if(!title) title=BADGE_TITLES[tok[0]]; tok.shift(); }
+  while(tok.length&&BADGE_CRED.test(tok[tok.length-1].replace(/,$/,''))){ cred=true; tok.pop(); }
+  tok=tok.map(t=>t.replace(/[.,]+$/,'')).filter(Boolean);
+
+  /* Whether to call them doctor. On a dental stand everyone is, which is why ALWAYS is the
+     default and the setting exists at all — AUTO honours the badge, NEVER uses the bare name. */
+  const mode=VOL.badgeTitle;
+  if(mode==='always') title=title||'DR';
+  else if(mode==='never') title='';
+  else if(!title&&cred) title='DR';
+
+  const given=tok[0]||'', full=tok.join(' ');
+  return {
+    raw:badgeFold(clean), id:badgeFold(id), title, given, full,
+    display: given ? (title?title+' '+given:given) : 'DOCTOR',
+    board: (full||given||badgeFold(id)||'PLAYER').slice(0,16),
+    at: nowMs(),
+  };
+}
+/* One way in, whatever the source: the cabinet's shell, a reader wired straight to the game,
+   or a launcher that already knows who is playing. */
+function badgeTake(raw,from){
+  const b=badgeParse(raw);
+  if(!b.given&&!b.id) return false;
+  /* The cabinet's shell re-sends the player every 400 ms until the round starts, so taking a
+     badge has to be idempotent — the same person arriving again is not a new scan, and without
+     this the accept sound fired two and a half times a second on the title screen. */
+  if(BADGE&&BADGE.raw===b.raw&&BADGE.display===b.display) return true;
+  b.from=from||'SCANNER';
+  BADGE=b; badgeFlash=1.6;
+  try{ SFX.dock(); }catch(e){}
+  host('player',{name:b.board, display:b.display, raw:b.raw});
+  return true;
+}
+function badgeClear(){ BADGE=null; badgeFlash=0; }
+const playerOn=()=>!!(BADGE&&BADGE.given);
+const playerName=()=>BADGE?BADGE.display:null;
+const playerBoard=()=>BADGE?BADGE.board:null;
+const drSub=s=>String(s).replace(/\{DR\}/g,playerName()||'DOCTOR');
+
+/* ── THE BOARD ──────────────────────────────────────────────────────────── */
 const LB_KEY='gw.crownrunner.hs.v2';
 function lbLoad(){ try{ const v=JSON.parse(localStorage.getItem(LB_KEY)); return Array.isArray(v)?v:[]; }catch(e){ return []; } }
 function lbSave(l){ try{ localStorage.setItem(LB_KEY,JSON.stringify(l.slice(0,10))); }catch(e){} }
@@ -1056,7 +1263,11 @@ function newGame(){
       flash:0, flashCol:CFG.col.good, banner:null, bannerCol:CFG.col.white, bannerT:0,
       scans:0, seats:0, matches:0, lost:0, hits:0, pods:0 };
 }
-function banner(t,c){ G.banner=t; G.bannerCol=c; G.bannerT=1.15; }
+/* An empty banner is not armed at all. Beyond the drawing, a banner that is up but says
+   nothing also holds the free round's next case back — drillTick waits for bannerT to run
+   out — so an invisible one stalls the lesson rather than merely wasting a second. */
+function banner(t,c){ if(t===undefined||t===null||t==='') return;
+                      G.banner=String(t); G.bannerCol=c; G.bannerT=1.15; }
 function hint(t,s=2.8){ G.hint=t; G.hintT=s; }
 function flash(c){ G.flash=1; G.flashCol=c; }
 function scrParts(worldX,col,n,spd){
@@ -2972,6 +3183,10 @@ const FONT5x7=(()=>{
   ')':'#.|.#|.#|.#|.#|.#|#.',
   '?':'.##.|#..#|...#|..#.|.#..|....|.#..',
   '!':'#|#|#|#|#|.|#',
+  /* The panel's admin button is silk-screened with three bars, and without this glyph its row
+     on the settings screen read '???' — the face was being asked for a character it did not
+     have, which is drawn as a question mark by design. */
+  '|':'#|#|#|#|#|#|#',
   '×':'.....|#...#|.#.#.|..#..|.#.#.|#...#|.....',
   '·':'..|..|..|##|##|..|..',
   '—':'......|......|......|######|......|......|......',
@@ -3112,6 +3327,14 @@ function rule(x1,y,x2,col,w){ ctx.strokeStyle=col; ctx.lineWidth=w||1;
    string, so nothing else had to change: block size follows the size, and the advance
    stays close to the old metric so the panels measured against it still fit. */
 function txt(s,x,y,{size=24,weight=700,col=CFG.col.bone,align='left',ls='0px',font=F_DISP,max=0}={}){
+  /* Coerced, and not out of tidiness. pixWidth iterates the string, so a caller that hands in a
+     null — a banner whose text was never set, a label read off a field that is not there — threw
+     out of the render loop, and the loop is wrapped in a catch that replaces the entire cabinet
+     with an error page. One bad argument must not be able to take the screen down; drawing the
+     word "null" for a frame is a fault you can see and fix, a blank cabinet is not.
+     Seen once while testing the badge and never reproduced, which is exactly the kind of fault
+     that turns up on a show floor instead. */
+  s=(s===undefined||s===null)?'':String(s);
   /* Three pixels is the floor for a block. Below that a 5x7 stroke is one or two
      pixels wide, the tube's barrel and channel offset smear it, and small labels stop
      being type and start being dirt. Bigger labels than before, so a few strings were
@@ -3310,8 +3533,12 @@ function drawSlip(){
   gwLogo(S.x+38,S.y+32,18);
   txt('LAB CASE SLIP',S.x+72,S.y+42,{size:20,weight:800,col:'#FFF6E6',ls:'3px',font:F_MONO});
   const imp=implanting();
-  txt(imp?'STAGE 2':(practising()?'TRAINING':'STAGE 1'),S.x+20,S.y+80,
-      {size:13,weight:700,col:'rgba(255,255,255,0.85)',ls:'2px',font:F_MONO});
+  /* A real lab slip names the dentist it came from. With a badge that line is theirs; without
+     one it says which half of the day this is, which is what it always said. */
+  txt(playerOn()?drSub('{DR}'):(imp?'STAGE 2':(practising()?'TRAINING':'STAGE 1')),
+      S.x+20,S.y+80,
+      {size:13,weight:playerOn()?800:700,col:playerOn()?'#FFF6E6':'rgba(255,255,255,0.85)',
+       ls:'2px',font:F_MONO,max:S.w-150});
   if(imp){
     txt(liveSockets(0)+liveSockets(1)+' LEFT',S.x+S.w-20,S.y+80,
         {size:14,weight:800,col:'#FFF6E6',align:'right',ls:'2px',font:F_MONO});
@@ -3930,6 +4157,17 @@ function drawAttract(){
   txt('SCAN  ·  MILL  ·  WIN',L,516,
       {size:20,weight:700,col:CFG.col.score,ls:'6px',font:F_MONO});
 
+  /* Who is playing, once a badge has been read — by the cabinet's shell before it launched
+     us, or by the reader here. Inside the shell this screen is only up for a moment, so the
+     line is mostly for the game standing on its own. */
+  if(playerOn()){
+    txt('WELCOME',L,578,{size:15,weight:700,col:CFG.col.dim,ls:'6px',font:F_MONO});
+    txt(drSub('{DR}'),L,626,{size:40,weight:800,col:CFG.col.score,ls:'5px',max:COLW+120});
+  } else if(Math.sin(T*1.8)>-0.5){
+    txt('SCAN  YOUR  BADGE  TO  PLAY  BY  NAME',L,606,
+        {size:15,weight:700,col:'rgba(138,131,119,0.75)',ls:'3px',font:F_MONO});
+  }
+
   if(Math.sin(T*4.4)>-0.35)
     txt('PRESS  START',L,690,{size:60,weight:800,col:CFG.col.redLt,ls:'12px'});
 
@@ -3965,6 +4203,36 @@ function drawAttract(){
 
 const ALPHA='ABCDEFGHIJKLMNOPQRSTUVWXYZ .';
 let entry={pos:0,ch:[0,0,0],list:null,mine:-1};
+/* The board, back on the report screen. It came off when every score was three anonymous
+   initials and a list of strangers only competed with the argument the two plates make. With a
+   badge it is the opposite: the name on it is the player's own, they watched it go on, and it
+   is the one thing on this screen that is about them. Five rows, theirs picked out. */
+function drawBoard(x,y,w,h){
+  const all=(entry.list&&entry.list.length?entry.list:lbLoad());
+  /* Five rows, and one of them is theirs. A modest score sits outside the top five, and a board
+     that then cannot show the player their own name is not doing the job the badge was scanned
+     for — so when they placed lower, the last row gives way to theirs, keeping its real rank. */
+  const list=all.slice(0,5).map((r,i)=>({r,i}));
+  if(entry.mine>=5&&all[entry.mine]) list[4]={r:all[entry.mine],i:entry.mine};
+  ctx.fillStyle='rgba(122,128,138,0.08)'; ctx.fillRect(x,y,w,h);
+  ctx.strokeStyle='rgba(122,128,138,0.45)'; ctx.lineWidth=2; ctx.strokeRect(x,y,w,h);
+  txt("TODAYS  BOARD",x+20,y+34,
+      {size:15,weight:800,col:'rgba(138,131,119,0.9)',ls:'3px',font:F_MONO});
+  if(!list.length){
+    txt('NOTHING ON IT YET',x+20,y+86,
+        {size:15,weight:700,col:'rgba(138,131,119,0.7)',ls:'2px',font:F_MONO});
+    return;
+  }
+  const step=Math.min(32,(h-62)/Math.max(1,list.length));
+  list.forEach((row,slot)=>{
+    const r=row.r, rank=row.i, ry=y+70+slot*step, me=rank===entry.mine;
+    if(me){ ctx.fillStyle='rgba(255,204,51,0.12)'; ctx.fillRect(x+10,ry-20,w-20,step-2); }
+    const col=me?CFG.col.score:'rgba(214,206,192,0.85)';
+    txt(String(rank+1),x+20,ry,{size:15,weight:700,col:'rgba(138,131,119,0.8)',font:F_MONO});
+    txt(r.n,x+56,ry,{size:15,weight:800,col,ls:'1px',font:F_MONO,max:w-194});
+    txt(String(r.s),x+w-20,ry,{size:15,weight:800,col,align:'right',font:F_MONO});
+  });
+}
 function drawOver(){
   ctx.save(); ctx.fillStyle='rgba(8,8,10,0.90)'; ctx.fillRect(0,0,VW,VH); ctx.restore();
   marqueeLeft(88);
@@ -3983,6 +4251,9 @@ function drawOver(){
   const COLW=430, GAP=60, COLR=RAIL+COLW+GAP+COLW;   // 1070: the left column's edge
 
   txt('SHIFT  COMPLETE',RAIL,236,{size:96,weight:800,col:CFG.col.white,ls:'10px'});
+  if(playerOn())
+    txt(drSub('{DR}'),VW-RAIL,236,
+        {size:40,weight:800,col:CFG.col.score,ls:'5px',align:'right',max:560});
   /* One line saying how the day actually finished. It was taken out as clutter, and without it
      there is no way to tell a flawless shift from a line that stopped at nine in the morning —
      both simply end, and the second stage appears to come and go at random. */
@@ -4015,6 +4286,11 @@ function drawOver(){
         {size:15,weight:700,col:'rgba(138,131,119,0.8)',align:'right',ls:'3px',font:F_MONO});
   });
 
+  /* Not while they are still spelling their initials: the entry panel occupies the same band,
+     and the board is about to change anyway the moment they confirm. */
+  if(mode!=='ENTRY')
+    drawBoard(RAIL+pw+GAP+pw+GAP+10, py, VW-RAIL-(RAIL+pw+GAP+pw+GAP+10), ph);
+
   const hx=VW-RAIL-420;
   if(mode==='ENTRY'){
     txt('ENTER YOUR INITIALS',hx,340,{size:20,weight:700,col:CFG.col.white,ls:'7px',font:F_MONO});
@@ -4032,7 +4308,7 @@ function drawOver(){
       }
     }
     txt('JOYSTICK ▲▼  LETTER',hx,606,{size:18,weight:700,col:CFG.col.dim,ls:'4px',font:F_MONO});
-    txt('◀▶  SLOT',hx,636,{size:18,weight:700,col:CFG.col.dim,ls:'4px',font:F_MONO});
+    txt('←→  SLOT',hx,636,{size:18,weight:700,col:CFG.col.dim,ls:'4px',font:F_MONO});
     txt(btnSub('{FIRE}  CONFIRM'),hx,666,{size:18,weight:700,col:CFG.col.score,ls:'4px',font:F_MONO});
   }else{
     /* The high-score table is gone from this screen. It was the only thing on it that
@@ -4041,9 +4317,11 @@ function drawOver(){
        same seconds and wins, because a list of names is easier to read than an
        argument. Scores are still kept and still ranked in storage; nothing about the
        leaderboard itself was removed, only its place here. */
+    /* Under the row of cards, not across it. Right-aligned at 730 this printed straight over
+       the board — which is the one thing on the screen the player is looking for their own name
+       on. */
     if(Math.sin(T*4.4)>-0.35)
-      // right-aligned where the table's edge used to be, so the column still has a spine
-      txt('PRESS  START  TO  PLAY  AGAIN',hx+420,730,
+      txt('PRESS  START  TO  PLAY  AGAIN',VW-RAIL,946,
           {size:30,weight:800,col:CFG.col.redLt,ls:'5px',align:'right'});
   }
   txt(CFG.brand.tagline,RAIL,1026,{size:16,weight:600,col:'rgba(138,131,119,0.55)',ls:'2px'});
@@ -5193,6 +5471,14 @@ PATIENTS.forEach(p=>{ p.img=new Image(); p.ok=false;
 const JIM=new Image(); let jimOK=false;
 JIM.onload=()=>{jimOK=true;}; JIM.onerror=()=>{jimOK=false;};
 JIM.src='data:image/png;base64,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';
+/* Lines he only has once somebody has scanned in. Mixed with the rest rather than replacing
+   them: a coach who says your name every twenty seconds stops sounding like a colleague. */
+const JIM_NAMED=[
+  '{DR} — YOU HAVE GOT THIS.',
+  'GOOD MARGIN, {DR}.',
+  'THAT IS THE WAY, {DR}.',
+  'KEEP THE CHAIR MOVING, {DR}.',
+];
 const JIM_LINES=[
   'YOU HAVE GOT THIS.',
   'DENTISTRY WITHIN REACH OF EVERYONE.',
@@ -5213,7 +5499,9 @@ function jimTick(dt){
   if(jim.t<0){
     jim.next-=dt;
     if(jim.next<=0){
-      jim.t=0; jim.line=JIM_LINES[Math.floor(Math.random()*JIM_LINES.length)];
+      // one line in three is by name, when there is a name to use
+      const pool=(playerOn()&&Math.random()<0.34)?JIM_NAMED:JIM_LINES;
+      jim.t=0; jim.line=drSub(pool[Math.floor(Math.random()*pool.length)]);
       jim.next=rnd(JIM_EVERY[0],JIM_EVERY[1]);
     }
     return;
@@ -5293,13 +5581,21 @@ const NAMES_F=['MAYA','PRIYA','ANNA','LENA','SOFIA','GRACE','NINA','AISHA','RUTH
 const NAMES_M=['DEREK','TOMAS','KWAME','HIRO','OMAR','MATEO','JONAS','ELIAS','NOAH','ANDRE',
                'PABLO','LUCA','DANIEL','SAM'];
 const NAMES=NAMES_F.concat(NAMES_M);
-const QUOTES=[
-  ['I CAME IN AT LUNCH WITH A CRACKED','MOLAR AND WALKED OUT WITH THE CROWN','ALREADY IN. ONE APPOINTMENT.'],
-  ['THEY SCANNED IT, CUT IT AND FITTED','IT WHILE I SAT THERE. I STILL DO','NOT QUITE BELIEVE IT.'],
-  ['NO TEMPORARY. NO SECOND TRIP ACROSS','TOWN. I WAS BACK AT WORK THE SAME','AFTERNOON.'],
-  ['I HAD PUT IT OFF FOR A YEAR BECAUSE','OF THE TWO VISITS. TURNS OUT IT','ONLY TAKES ONE.'],
-  ['MY DAUGHTER ASKED WHY I WAS SMILING','SO MUCH. I TOLD HER IT WAS FINISHED','ALREADY.'],
+/* What the patient writes to the person who treated them. {DR} becomes their name when a badge
+   was read and "DOCTOR" when none was, so this is the only set there is — everybody gets a note
+   addressed to them. */
+const QUOTES_DR=[
+  ['DEAR {DR} — THANK YOU.','ONE VISIT AND IT WAS DONE.','YOU ARE THE BEST THERE IS.'],
+  ['{DR}, YOU ARE THE BEST DENTIST','I HAVE EVER SAT IN FRONT OF.','THANK YOU FOR TODAY.'],
+  ['THANK YOU, {DR}.','NO TEMPORARY, NO SECOND TRIP.','NOBODY DOES IT LIKE YOU.'],
+  ['DEAR {DR}, I PUT THIS OFF A YEAR.','YOU FINISHED IT IN ONE SITTING.','YOU ARE INCREDIBLE. THANK YOU.'],
+  ['{DR} — I TOLD MY DAUGHTER MY','DENTIST IS THE BEST IN THE WORLD.','THANK YOU FOR EVERYTHING.'],
 ];
+/* There used to be a second set here — the same five sentiments written ABOUT a clinic rather
+   than TO a person — shown whenever nobody had scanned. It is gone. A visitor who did not scan
+   still treated those patients, and the thank-you is the point of the screen; without a name
+   the patient simply says "doctor", which is what they would say in the chair anyway. The old
+   impersonal set is in the history if it is ever wanted back. */
 /* ── WHO YOU MEET, AND IN WHAT ORDER ────────────────────────────────────────
    A shuffle bag, not a dice roll. Rolling a patient at random meant the same face could come
    up twice in three credits while a dozen others had never been seen — on a stand, where
@@ -5324,24 +5620,32 @@ function shuffleBag(n){
   };
 }
 const nextPatient=shuffleBag(PATIENT_POOL);
-const nextQuote=shuffleBag(QUOTES.length);
+const nextQuote=shuffleBag(QUOTES_DR.length);
 
 function drawTestimonial(){
   const people=Math.max(0,Math.floor(G.seats/2));
   ctx.save(); ctx.fillStyle='rgba(8,8,10,0.92)'; ctx.fillRect(0,0,VW,VH); ctx.restore();
   marqueeLeft(88);
   if(people===0){
+    /* A shift that seated nothing has no patient to show, so this screen is all there is —
+       and with a badge it should still be addressed to somebody. Ending a round early and
+       landing on an unaddressed screen reads as the name having been forgotten rather than as
+       nobody having been treated. */
     txt('NO CASES CLOSED',RAIL,232,{size:96,weight:800,col:CFG.col.white,ls:'10px'});
     titleRule(RAIL+404,252,404);
-    txt('RUN THE SHIFT AGAIN — THERE IS A CHAIR FREE',RAIL,320,
-        {size:24,weight:800,col:CFG.col.score,ls:'4px',font:F_MONO});
+    txt(drSub('RUN THE SHIFT AGAIN, {DR} — THERE IS A CHAIR FREE'),RAIL,320,
+        {size:24,weight:800,col:CFG.col.score,ls:'4px',font:F_MONO,max:VW-RAIL*2});
     return;
   }
   /* Drawn once per credit, not once per frame: the card is redrawn sixty times a second and
      the person on it must not change while somebody is reading their name. */
   if(G.patientIx===undefined){ G.patientIx=nextPatient(); G.quoteIx=nextQuote(); }
   const PT=PATIENTS[G.patientIx%PATIENTS.length];
-  const name=PT.name, quote=QUOTES[G.quoteIx];
+  const named=playerOn();
+  const name=PT.name;
+  /* drSub fills {DR} with "DR HOWARD" when a badge was read and with "DOCTOR" when none was,
+     so one set of lines covers both and the note is always a note to somebody. */
+  const quote=QUOTES_DR[G.quoteIx].map(drSub);
 
   /* The count moved to the subline: at gen 2 the headline is 73px a character, and
      'ONE OF 8 HAPPY PATIENTS' measured 1659px against 1620 of usable rail — it ran off the
@@ -5417,8 +5721,10 @@ function drawTestimonial(){
   ctx.fillStyle=CFG.col.paper;     ctx.fillRect(qx,qy,qw,cardH);
   ctx.strokeStyle=CFG.col.ink; ctx.lineWidth=4; ctx.strokeRect(qx,qy,qw,cardH);
   ctx.fillStyle=CFG.col.red; ctx.fillRect(qx,qy,qw,54);
-  txt('IN THEIR WORDS',qx+34,qy+38,
-      {size:19,weight:800,col:'#FFF6E6',ls:'5px',font:F_MONO});
+  /* "A NOTE FOR DOCTOR" is not a thing anybody writes, so with no name the card is addressed
+     to the reader instead — the line underneath still says "doctor" out loud. */
+  txt(named?drSub('A NOTE FOR {DR}'):'A NOTE FOR YOU',qx+34,qy+38,
+      {size:19,weight:800,col:'#FFF6E6',ls:'5px',font:F_MONO,max:qw-68});
   const LN=52, top=qy+140;
   quote.forEach((l,i)=>
     txt(l,qx+34,top+i*LN,
@@ -5453,6 +5759,18 @@ const MENU_ROWS=[
      rather than a stranger's half-played shift. The operator sets how patient it is. */
   {kind:'choice',key:'idle',name:'BACK  TO  TITLE',
    opts:[60,180,300,0], labels:['1  MINUTE','3  MINUTES','5  MINUTES','NEVER']},
+  /* Both of these exist so a badge layout nobody predicted can be fixed on the stand, with the
+     last scan printed in the column to the right while you do it. */
+  {kind:'choice',key:'badgeField',name:'BADGE  NAME  FIELD',
+   opts:[-1,0,1,2,3,4,5],
+   labels:['FIND IT','FIELD 1','FIELD 2','FIELD 3','FIELD 4','FIELD 5','FIELD 6']},
+  {kind:'choice',key:'badgeTitle',name:'CALL  THEM  DOCTOR',
+   opts:['always','auto','never'], labels:['ALWAYS','FROM THE BADGE','NEVER']},
+  /* The one thing nobody could check without hardware. A scanner set up for the cabinet talks
+     over a serial port and types nothing into a browser, so on any other machine the game stays
+     anonymous and the personalised ending never shows — which reads as "it does not work"
+     rather than as "nothing has scanned". This sets a sample badge, and clears it again. */
+  {kind:'act',   act:'badge',name:'TEST  BADGE  —  SET / CLEAR'},
   {kind:'act',   act:'cal', name:'RECALIBRATE  STICK  CENTRE'},
   {kind:'act',   act:'fs',  name:'FULL  SCREEN'},
   {kind:'reset',name:'RESET EVERYTHING'},
@@ -5553,11 +5871,17 @@ function bindTick(){
     else if(r.kind==='act'){
       if(r.act==='fs') goFS();
       if(r.act==='cal'){ axRest=null; padStuck=null; U.saved=1.2; }
+      if(r.act==='badge'){
+        if(playerOn()) badgeClear();
+        else badgeTake('Dr. Howard Farran|Digital Dentistry Experience|DDS|A1182','TEST');
+        U.saved=1.2;
+      }
       SFX.ui();
     }
     else if(r.kind==='reset'){
       BIND=JSON.parse(JSON.stringify(BIND_DEFAULT)); saveBind();
-      VOL={music:0.32,sfx:0.32,crt:true,fps:false,swap:false,swapSet:false,idle:60}; saveVol();
+      VOL={music:0.32,sfx:0.32,crt:true,fps:false,swap:false,swapSet:false,idle:60,
+           badgeField:-1,badgeTitle:'always'}; saveVol();
       U.saved=1.2; SFX.ui();
     }
     else { saveBind(); saveVol(); mode='ATTRACT'; bindHold=0; idle=0; SFX.start(); }
@@ -5567,66 +5891,85 @@ function bindTick(){
    in some unexpected way is undebuggable from the cabinet — you cannot bind what you
    cannot see, and the readout is what turns "the joystick does not work" into a fact. */
 function drawRawInput(){
-  const x=1440, y=366, W=330;
+  /* One cursor down the column. It used to be a set of hardcoded offsets, and every one of
+     them assumed a gamepad was attached: with none, the "no gamepad" note printed on top of
+     the wiring block. */
+  const x=1440, W=356;
+  let y=366;
+  const line=(s,col,size)=>{ txt(fitPix(s,W,size||14,1),x,y,
+    {size:size||14,weight:700,ls:'1px',font:F_MONO,col:col||'rgba(138,131,119,0.75)'}); y+=26; };
   txt('RAW  INPUT',x,y,{size:17,weight:800,ls:'5px',font:F_MONO,col:CFG.col.dim});
   rule(x,y+12,x+W,'rgba(235,0,69,0.4)',2);
+  y+=44;
   const keys=[...Input.keys];
-  txt(fitPix('KEYS  '+(keys.length?keys.join(' '):'—'),W,15,1),x,y+44,
-      {size:15,weight:700,ls:'1px',font:F_MONO,
-       col:keys.length?CFG.col.score:'rgba(138,131,119,0.7)'});
-  txt(fitPix('PAD   '+(padName||'NONE DETECTED'),W,15,1),x,y+72,
-      {size:15,weight:700,ls:'1px',font:F_MONO,
-       col:padName?'rgba(214,206,192,0.9)':'rgba(138,131,119,0.7)'});
-  txt(fitPix('BTNS  '+(padLive.length?padLive.join(' '):'—'),W,15,1),x,y+100,
-      {size:15,weight:700,ls:'1px',font:F_MONO,
-       col:padLive.length?CFG.col.score:'rgba(138,131,119,0.7)'});
-  /* Whether the last save actually landed, and the wiring itself in one line. Between them
-     these answer the only question an operator has after re-binding a panel: will this still
-     be here tomorrow. If STORAGE says BLOCKED the answer is no, and the code below is what
-     gets sent back so the wiring can be built into the game instead. */
+  line('KEYS  '+(keys.length?keys.join(' '):'—'), keys.length?CFG.col.score:null);
+  line('PAD   '+(padName||'NONE DETECTED'), padName?'rgba(214,206,192,0.9)':null);
+  line('BTNS  '+(padLive.length?padLive.join(' '):'—'), padLive.length?CFG.col.score:null);
+  /* Whether the last save actually landed. Between this and the wiring below it, an operator
+     has the only answer they need after re-binding a panel: will this still be here tomorrow.
+     If STORAGE says BLOCKED the answer is no, and the code below is what gets sent back so the
+     wiring can be built into the game instead. */
   if(storageOK!==null)
-    txt(storageOK?'STORAGE  SAVED OK':'STORAGE  BLOCKED — WILL NOT PERSIST',x,y+128,
-        {size:15,weight:800,ls:'1px',font:F_MONO,
-         col:storageOK?'rgba(46,214,74,0.95)':CFG.col.redHot});
+    line(storageOK?'STORAGE  SAVED OK':'STORAGE  BLOCKED — WILL NOT PERSIST',
+         storageOK?'rgba(46,214,74,0.95)':CFG.col.redHot);
+  y+=8;
+  if(!axLive.length&&!padName){
+    line('NO GAMEPAD SEEN.');
+    line('THE STICK MAY BE SENDING');
+    line('KEYS INSTEAD.');
+  }
   for(let i=0;i<Math.min(axLive.length,10);i++){
     const rest=(axRest&&axRest[i]!=null)?axRest[i]:0, v=axLive[i]-rest;
-    const yy=y+134+i*26, bw=140, bx=x+112;
-    txt('AXIS '+i,x,yy,{size:15,weight:700,ls:'1px',font:F_MONO,
+    const bw=140, bx=x+112;
+    txt('AXIS '+i,x,y,{size:14,weight:700,ls:'1px',font:F_MONO,
         col:Math.abs(v)>AX_ON?CFG.col.score:'rgba(138,131,119,0.7)'});
-    ctx.fillStyle='rgba(122,128,138,0.22)'; ctx.fillRect(bx,yy-10,bw,PIXEL_K*2);
+    ctx.fillStyle='rgba(122,128,138,0.22)'; ctx.fillRect(bx,y-10,bw,PIXEL_K*2);
     const half=bw/2, w=clamp(Math.abs(v),0,1)*half;
     ctx.fillStyle=Math.abs(v)>AX_ON?CFG.col.score:'rgba(122,128,138,0.7)';
-    ctx.fillRect(v<0?bx+half-w:bx+half,yy-10,Math.max(PIXEL_K,w),PIXEL_K*2);
-    txt(v.toFixed(2),x+W,yy,{size:15,weight:700,font:F_MONO,align:'right',
+    ctx.fillRect(v<0?bx+half-w:bx+half,y-10,Math.max(PIXEL_K,w),PIXEL_K*2);
+    txt(v.toFixed(2),x+W,y,{size:14,weight:700,font:F_MONO,align:'right',
         col:'rgba(138,131,119,0.9)'});
+    y+=26;
   }
-  {
-    const code=bindCode(), yy=y+134+Math.min(axLive.length,10)*26+34;
-    txt('PANEL  WIRING  —  SEND THIS BACK TO BAKE IT IN',x,yy,
-        {size:14,weight:800,ls:'2px',font:F_MONO,col:'rgba(138,131,119,0.8)'});
-    code.split('  ').forEach((part,i)=>
-      txt(part,x+(i%2)*168,yy+26+Math.floor(i/2)*24,
-          {size:14,weight:700,ls:'1px',font:F_MONO,col:'rgba(214,206,192,0.85)'}));
-  }
-  /* Which axis is actually moving, named outright. This is the one fact needed to bind a
-     stick that reports itself in an unexpected way, and reading it off a bar chart is
-     harder than reading it in a sentence. */
+  /* Which axis is actually moving, named outright. This is the one fact needed to bind a stick
+     that reports itself in an unexpected way, and reading it off a bar chart is harder than
+     reading it in a sentence. */
   let big=-1, bigv=0;
   for(let i=0;i<axLive.length;i++){
     const v=axLive[i]-((axRest&&axRest[i]!=null)?axRest[i]:0);
     if(Math.abs(v)>Math.abs(bigv)){ bigv=v; big=i; }
   }
-  if(big>=0&&Math.abs(bigv)>0.25)
-    txt('MOVING: AXIS '+big+(bigv>0?' +':' -'),x,y+134+Math.min(axLive.length,10)*26+8,
-        {size:15,weight:800,ls:'1px',font:F_MONO,col:CFG.col.score});
-  if(!axLive.length&&!padName){
-    txt('NO GAMEPAD SEEN.',x,y+134,
-        {size:15,weight:700,ls:'1px',font:F_MONO,col:'rgba(138,131,119,0.7)'});
-    txt('THE STICK MAY BE',x,y+160,
-        {size:15,weight:700,ls:'1px',font:F_MONO,col:'rgba(138,131,119,0.7)'});
-    txt('SENDING KEYS INSTEAD.',x,y+186,
-        {size:15,weight:700,ls:'1px',font:F_MONO,col:'rgba(138,131,119,0.7)'});
+  if(big>=0&&Math.abs(bigv)>0.25) line('MOVING: AXIS '+big+(bigv>0?' +':' -'),CFG.col.score);
+
+  /* The badge, as it actually arrived. An operator points the reader at a real badge, looks
+     here, and either sees the right name or moves BADGE NAME FIELD until they do. Without this
+     a badge layout we did not predict is undiagnosable from the stand. */
+  y+=12;
+  txt('BADGE  READER',x,y,{size:14,weight:800,ls:'4px',font:F_MONO,col:CFG.col.dim});
+  y+=24;
+  if(BADGE){
+    line('RAW   '+BADGE.raw,'rgba(214,206,192,0.85)',13);
+    line('NAME  '+(BADGE.full||'—'),CFG.col.white,13);
+    line('SAYS  '+BADGE.display,CFG.col.score,13);
+    line('VIA   '+BADGE.from,null,13);
+    const f=badgeFields(BADGE.raw);
+    if(f.length>1) line('FIELDS '+f.length+'  USING '+
+      (VOL.badgeField<0?'FOUND':'FIELD '+(VOL.badgeField+1)),null,13);
+  } else {
+    line('NOTHING SCANNED YET.',null,13);
+    line('SCAN A BADGE NOW —',null,13);
+    line('IT WILL PRINT HERE.',null,13);
   }
+
+  y+=12;
+  txt('PANEL  WIRING',x,y,{size:13,weight:800,ls:'4px',font:F_MONO,col:CFG.col.dim});
+  y+=22;
+  txt('SEND THIS BACK TO BAKE IT IN',x,y,
+      {size:12,weight:700,ls:'1px',font:F_MONO,col:'rgba(138,131,119,0.8)',max:W});
+  y+=24;
+  bindCode().split('  ').forEach((part,i)=>
+    txt(part,x+(i%2)*180,y+Math.floor(i/2)*22,
+        {size:13,weight:700,ls:'1px',font:F_MONO,col:'rgba(214,206,192,0.85)',max:174}));
 }
 function drawBind(){
   const U=bindUI;
@@ -5634,7 +5977,7 @@ function drawBind(){
   marqueeLeft(88);
   txt('SETTINGS',RAIL,236,{size:96,weight:800,col:CFG.col.white,ls:'10px'});
   titleRule(RAIL+404,256,404);
-  txt('PANEL BUTTONS, WHAT IS PRINTED ON THEM, AND THE LEVELS',RAIL,306,
+  txt('PANEL BUTTONS, WHAT IS PRINTED ON THEM, AND THE LEVELS',RAIL,290,
       {size:17,weight:700,col:'rgba(138,131,119,0.85)',ls:'2px',font:F_MONO});
 
   const NAMES={scan:'SCAN',fire:'FIRE CROWN',slow:'SLOW DOWN',start:'START / PAUSE',
@@ -5642,7 +5985,7 @@ function drawBind(){
                up:'JOYSTICK  UP',down:'JOYSTICK  DOWN',menu:'MENU  BUTTON'};
   /* Nineteen rows now. At 34px the last one landed on the help text at the foot of the
      screen — the list grew and the spacing never did. */
-  const y0=322, step=30;
+  const y0=324, step=28;
   MENU_ROWS.forEach((r,i)=>{
     const sel=U.row===i, y=y0+i*step;
     if(sel){ ctx.fillStyle='rgba(235,0,69,0.14)'; ctx.fillRect(RAIL-14,y-23,1284,30); }
@@ -5734,7 +6077,7 @@ function drawBind(){
    side is his right and the intern's is his left, so the intern is the one that keeps the
    poster's own orientation and they meet in the middle. */
 const OUTRO=[
-  {who:'jim',   lines:['THAT IS THE SHIFT.','EVERY CROWN CUT AND SEATED','WHILE THE PATIENT WAS','STILL IN THE CHAIR.']},
+  {who:'jim',   lines:['THAT IS THE SHIFT, {DR}.','EVERY CROWN CUT AND SEATED','WHILE THE PATIENT WAS','STILL IN THE CHAIR.']},
   {who:'intern',lines:['NO SECOND APPOINTMENT.','NO TEMPORARY.','NOTHING LEFT THE BUILDING.']},
   {who:'jim',   lines:['SCAN. DESIGN. MILL. DELIVER.','ONE VISIT.','THAT IS  GLIDEWELL.IO']},
 ];
@@ -5777,11 +6120,10 @@ function host(event,extra){
    A compilation almost certainly wants its own ending, and rewriting ours is worse for
    everyone than being allowed to replace it. */
 let hostEnding=false;
-/* A name handed in from outside — a badge scanner, a launcher's login, anything. When it is
-   set the game stops asking for three initials: the score goes straight onto the board under
-   that name. Trimmed to what FONT5x7 can actually draw, because a glyph the face does not
-   have renders as a question mark and the board would show it forever. */
-let hostPlayer=null;
+/* A name handed in from outside. This is the path the cabinet actually uses: its shell reads
+   the badge itself and sends {cmd:'player', name} — repeatedly, until the round starts. `badge`
+   is the same thing for a host that has raw scan text and wants our parser to make sense of it.
+   Both end up where the game's own reader does. */
 addEventListener('message',e=>{
   const d=e.data;
   if(!d||d.game!=='crown-runner') return;
@@ -5789,21 +6131,31 @@ addEventListener('message',e=>{
   if(d.cmd==='mute')   { musMuted=!!d.on; }
   if(d.cmd==='config'&&d.outro!==undefined) hostEnding=(d.outro===false);
   if(d.cmd==='player'){
-    const n=String(d.name||'').toUpperCase().replace(/[^A-Z0-9 .\-]/g,'').trim().slice(0,12);
-    hostPlayer=n||null;
+    /* The cabinet's shell sends only `name` — its own parser keeps the title in a separate
+       field it does not pass on. The richer fields are honoured when a host does send them. */
+    const n=badgeClean(d.name||[d.firstName,d.lastName].filter(Boolean).join(' ')).slice(0,48);
+    if(n) badgeTake((d.prefix?badgeClean(d.prefix)+' ':'')+n,'HOST');
+    else badgeClear();
+  }
+  if(d.cmd==='badge'){
+    const r=badgeClean(d.raw);
+    if(r) badgeTake(r,'HOST'); else badgeClear();
   }
 });
 function finishRound(){
+  const who=playerBoard();
   host('gameover',{score:G.score, teeth:G.seats, patients:Math.floor(G.seats/2),
-                   lost:G.lost, matches:G.matches, stage:G.stage, player:hostPlayer});
-  if(hostPlayer&&lbQualifies(G.score)){
+                   lost:G.lost, matches:G.matches, stage:G.stage,
+                   player:who, display:playerName()});
+  if(who&&lbQualifies(G.score)){
     // the player is already identified; asking them to spell three letters is a step backwards
-    const list=lbAdd(hostPlayer,G.score);
+    const list=lbAdd(who,G.score);
     mode='OVER'; entry.list=list;
-    entry.mine=list.findIndex(r=>r.n===hostPlayer&&r.s===G.score);
+    entry.mine=list.findIndex(r=>r.n===who&&r.s===G.score);
   }
   else if(lbQualifies(G.score)){ mode='ENTRY'; entry={pos:0,ch:[0,0,0],list:null,mine:-1}; }
   else { mode='OVER'; entry.list=lbLoad(); entry.mine=-1; }
+  if(!entry.list) entry.list=lbLoad();       // the report always has a board to show
   idle=0;
 }
 /* Same two stages as the lesson's panels: the first press finishes the line, the next moves
@@ -5826,7 +6178,9 @@ function outroTick(dt){
     return;
   }
   const beat=OUTRO[outro.step]; if(!beat){ finishRound(); return; }
-  const lines=beat.lines, len=lines.join('').length;
+  /* Substituted here as well as in the drawing, or the typewriter counts the four characters
+     of {DR} while the screen reveals the eight of DR HOWARD and stops halfway. */
+  const lines=beat.lines.map(drSub), len=lines.join('').length;
   const press=Input.fireEdge||Input.scanEdge||Input.slowEdge||Input.startEdge||Input.enterEdge;
   if(press){
     if(outro.ch<len) outro.ch=len;
@@ -5865,7 +6219,7 @@ function drawOutro(){
   if(jimOK) castPortrait(JIM,docX,figY,'JIM'); else drawDoc(docX,figY,u);
   ctx.globalAlpha=1;
   const beat=OUTRO[outro?outro.step:0]||OUTRO[0];
-  const lines=beat.lines, speaking=beat.who;
+  const lines=beat.lines.map(drSub), speaking=beat.who;
   const bh=26+lines.length*38, bw=bubbleW(lines,24,30,420,880);
   /* The card sits over whoever is talking and its tail lands on them, so a glance says who is
      speaking before a word of it is read. */
@@ -5921,7 +6275,7 @@ function handleInput(dt){
     if(touched) idlePlay=0; else idlePlay+=dt;
     if(VOL.idle>0 && idlePlay>VOL.idle){
       idlePlay=0; objs.length=0; scanHumOn(false,0);
-      mode='ATTRACT'; idle=0; newGame(); G.t=CFG.round;
+      mode='ATTRACT'; idle=0; newGame(); G.t=CFG.round; badgeClear();
       return;
     }
     if(Input.keys.has('Escape')){ Input.keys.delete('Escape'); endGame(); return; }
@@ -5958,7 +6312,7 @@ function handleInput(dt){
     Input.typed.length=0;
     if(Input.menuEdge){ enterBind(); return; }
     if(Input.startEdge) startGame();
-    else { idle+=dt; if(idle>18){ mode='ATTRACT'; objs.length=0; idle=0; } }
+    else { idle+=dt; if(idle>18){ mode='ATTRACT'; objs.length=0; idle=0; badgeClear(); } }
   }
 }
 
@@ -6021,13 +6375,26 @@ function frameBody(now){
      on the stage hand-over and on the closing speech, so the wave's clock simply stopped and
      the picture stayed swimming through the outro. A screen effect is owned by the screen. */
   if(G&&G.wave>0) G.wave=Math.max(0,G.wave-dt);
+  if(badgeFlash>0) badgeFlash=Math.max(0,badgeFlash-dt);
   wipeTick(dt);
   if(wipeT>0){ ctx.fillStyle='rgba(0,0,0,'+wipeT.toFixed(3)+')'; ctx.fillRect(0,0,VW,VH); }
   musTick(dt);
   present();
   requestAnimationFrame(frame);
 }
+window.__frame=frameBuf;     // the 1920x1080 backing store, for screenshots
 newGame(); mode='ATTRACT'; G.t=CFG.round;
+/* A scan without a reader, for working on any of this at a desk: ?badge= takes raw badge text
+   through the same parser the cabinet uses, ?player= skips straight to a name. A cabinet has no
+   address bar, so nobody reaches this by accident. */
+(function devBadge(){
+  try{
+    const q=new URLSearchParams(location.search);
+    const r=q.get('badge'), p=q.get('player');
+    if(r) badgeTake(r,'?badge=');
+    else if(p) badgeTake(p,'?player=');
+  }catch(e){}
+})();
 applyBtnLabels();          // resolve {SCAN}/{FIRE} in the lesson before anything draws
 rebuildKbd();              // the keyboard layer, minus anything the panel has claimed
 saveVol();                 // push the stored levels and toggles into the live state
