@@ -5453,17 +5453,21 @@ function castPortrait(img,x,y,name,flip){
    cast stops being two photographs and eight drawings. Each one is a fixed person: index, face,
    name and age all travel together, which is what lets the shuffle bag deal them like cards.
    Ages come from the artwork rather than from a die — the face is 52, so the caption says 52. */
+/* `smile` is where that person's canine is, in the portrait's own 80x120 art pixels — measured
+   off each file rather than guessed, by finding the brightest run in the mouth band and taking
+   its brighter end. It is where the glint lands, and it is different for every face because
+   every face is. */
 const PATIENTS=[
-  {file:'patient-01.png', name:'PRIYA',  age:35},   // brown wavy hair, green top
-  {file:'patient-02.png', name:'LENA',   age:29},   // dark ponytail, blue shirt
-  {file:'patient-03.png', name:'ESTHER', age:58},   // auburn curls, pink knit
-  {file:'patient-04.png', name:'TOMAS',  age:41},   // bearded, white tee
-  {file:'patient-05.png', name:'AISHA',  age:24},   // locs, yellow top
-  {file:'patient-06.png', name:'KWAME',  age:52},   // greying, grey shirt
-  {file:'patient-07.png', name:'JONAS',  age:67},   // white hair and moustache
-  {file:'patient-08.png', name:'DEREK',  age:28},   // young, blue tee
-  {file:'patient-09.png', name:'HIRO',   age:33},   // glasses, dark grey
-  {file:'patient-10.png', name:'CLARA',  age:61},   // grey hair, glasses, maroon
+  {file:'patient-01.png', name:'PRIYA',  age:35, smile:[43,57]},  // brown wavy hair, green top
+  {file:'patient-02.png', name:'LENA',   age:29, smile:[35,63]},  // dark ponytail, blue shirt
+  {file:'patient-03.png', name:'ESTHER', age:58, smile:[41,65]},  // auburn curls, pink knit
+  {file:'patient-04.png', name:'TOMAS',  age:41, smile:[35,65]},  // bearded, white tee
+  {file:'patient-05.png', name:'AISHA',  age:24, smile:[36,60]},  // locs, yellow top
+  {file:'patient-06.png', name:'KWAME',  age:52, smile:[41,63]},  // greying, grey shirt
+  {file:'patient-07.png', name:'JONAS',  age:67, smile:[36,67]},  // white hair and moustache
+  {file:'patient-08.png', name:'DEREK',  age:28, smile:[36,60]},  // young, blue tee
+  {file:'patient-09.png', name:'HIRO',   age:33, smile:[41,65]},  // glasses, dark grey
+  {file:'patient-10.png', name:'CLARA',  age:61, smile:[35,66]},  // grey hair, glasses, maroon
 ];
 PATIENTS.forEach(p=>{ p.img=new Image(); p.ok=false;
   p.img.onload=()=>{p.ok=true;}; p.img.onerror=()=>{p.ok=false;}; p.img.src=p.file; });
@@ -5584,12 +5588,20 @@ const NAMES=NAMES_F.concat(NAMES_M);
 /* What the patient writes to the person who treated them. {DR} becomes their name when a badge
    was read and "DOCTOR" when none was, so this is the only set there is — everybody gets a note
    addressed to them. */
+/* Three parts, because only two of them are worth reading from across an aisle: who it is to,
+   and what they think of them. The face has three sizes and nothing between, so the two big
+   lines are set at the largest step below the headline — half of HAPPY PATIENT, which is as
+   close as a hand-drawn 5x7 gets to "a little smaller". The middle is the small print.
+   Both big lines are kept short enough to survive a long name at that size; anything longer
+   and txt() drops them a step rather than running off the card. */
 const QUOTES_DR=[
-  ['DEAR {DR} — THANK YOU.','ONE VISIT AND IT WAS DONE.','YOU ARE THE BEST THERE IS.'],
-  ['{DR}, YOU ARE THE BEST DENTIST','I HAVE EVER SAT IN FRONT OF.','THANK YOU FOR TODAY.'],
-  ['THANK YOU, {DR}.','NO TEMPORARY, NO SECOND TRIP.','NOBODY DOES IT LIKE YOU.'],
-  ['DEAR {DR}, I PUT THIS OFF A YEAR.','YOU FINISHED IT IN ONE SITTING.','YOU ARE INCREDIBLE. THANK YOU.'],
-  ['{DR} — I TOLD MY DAUGHTER MY','DENTIST IS THE BEST IN THE WORLD.','THANK YOU FOR EVERYTHING.'],
+  {hail:'DEAR {DR}!',     body:['ONE VISIT, AND IT WAS DONE.'],       praise:'YOU ARE THE BEST!'},
+  {hail:'THANK YOU, {DR}!',body:['NO TEMPORARY. NO SECOND TRIP.'],     praise:'NOBODY LIKE YOU!'},
+  {hail:'DEAR {DR}!',     body:['I PUT THIS OFF FOR A YEAR.',
+                                'YOU FINISHED IT IN ONE SITTING.'],    praise:'INCREDIBLE WORK!'},
+  {hail:'{DR}, THANK YOU!',body:['I TOLD MY DAUGHTER ABOUT YOU.'],     praise:'SIMPLY THE BEST!'},
+  {hail:'DEAR {DR}!',     body:['SAME DAY, ONE APPOINTMENT.',
+                                'I STILL DO NOT QUITE BELIEVE IT.'],   praise:'BRILLIANT WORK!'},
 ];
 /* There used to be a second set here — the same five sentiments written ABOUT a clinic rather
    than TO a person — shown whenever nobody had scanned. It is gone. A visitor who did not scan
@@ -5645,15 +5657,20 @@ function drawTestimonial(){
   const name=PT.name;
   /* drSub fills {DR} with "DR HOWARD" when a badge was read and with "DOCTOR" when none was,
      so one set of lines covers both and the note is always a note to somebody. */
-  const quote=QUOTES_DR[G.quoteIx].map(drSub);
+  const note=QUOTES_DR[G.quoteIx];
 
   /* The count moved to the subline: at gen 2 the headline is 73px a character, and
      'ONE OF 8 HAPPY PATIENTS' measured 1659px against 1620 of usable rail — it ran off the
      screen, and worse for a two-digit shift. */
-  txt('HAPPY PATIENT',RAIL,232,{size:96,weight:800,col:CFG.col.white,ls:'10px'});
-  titleRule(RAIL+404,252,404);
+/* This screen is the one a visitor photographs. So the biggest thing on it is their own name
+   and what the patient thinks of them — not the word for the screen. HAPPY PATIENT drops to a
+   kicker, and the room it gives up goes to the note. The Glidewell lockup stays at the top and
+   the mark is repeated inside the card, because a phone photo is usually cropped to the
+   interesting part and the brand has to survive the crop. */
+  txt('HAPPY PATIENT',RAIL,206,{size:44,weight:800,col:CFG.col.white,ls:'8px'});
+  titleRule(RAIL+186,222,186);
   txt(people===1?'THE ONE YOU TREATED  ·  AND THE ONLY VISIT IT TOOK'
-               :'ONE OF  '+people+'  THIS SHIFT  ·  AND THE ONLY VISIT IT TOOK',RAIL,300,
+               :'ONE OF  '+people+'  THIS SHIFT  ·  AND THE ONLY VISIT IT TOOK',RAIL,262,
       {size:19,weight:700,col:'rgba(138,131,119,0.9)',ls:'4px',font:F_MONO});
 
   /* Two cards side by side: the photo and what they said. Everything else in this game is
@@ -5681,7 +5698,7 @@ function drawTestimonial(){
      and 18 below — three different numbers, and the eye reads the smallest one as the picture
      being pushed down in its frame. */
   const PM=24;
-  const cy=340, cardH=580;
+  const cy=298, cardH=644;
   const fx=RAIL+40, fw=pw+16+PM*2;
   ctx.fillStyle='rgba(0,0,0,0.5)'; ctx.fillRect(fx+8,cy+10,fw,cardH);
   ctx.fillStyle=CFG.col.paper;     ctx.fillRect(fx,cy,fw,cardH);
@@ -5695,12 +5712,18 @@ function drawTestimonial(){
   ctx.imageSmoothingEnabled=false;
   if(PT.ok) ctx.drawImage(PT.img,0,0,80,120,fx+PM+8,fy,pw,ph);
   /* A glint on one tooth, on the same cycle as the crown on the title art. It is the only
-     moving thing on the screen, so it is what the eye lands on — and what it lands on is the
-     result of the whole shift. */
+     moving thing on the screen, so it is what the eye lands on — and what it lands on had
+     better be the work.
+
+     It was one hardcoded point used for all ten faces, and the point was wrong: y=39 of 120 is
+     eye height, so every portrait sparkled on a brow or a cheek. The coordinates are measured
+     per portrait now — the brightest run in each mouth, and the brighter END of that run, so it
+     lands on a canine rather than in the middle of a smile. */
   const tw=(T%2.6)/2.6;
   if(tw<0.16){
     const kk=Math.sin(tw/0.16*Math.PI);
-    const gx=fx+PM+8+32*u, gy=fy+39*u;      // the teeth run x 25..39, y 36..41 in art pixels
+    const sm=PT.smile||[38,62];
+    const gx=fx+PM+8+sm[0]*u, gy=fy+sm[1]*u;
     glow(gx,gy,30*kk,'#FFF6E6',0.85*kk);
     ctx.fillStyle='rgba(255,255,255,'+(0.95*kk).toFixed(2)+')';
     const r0=Math.round(16*kk/PIXEL_K)*PIXEL_K;
@@ -5723,12 +5746,19 @@ function drawTestimonial(){
   ctx.fillStyle=CFG.col.red; ctx.fillRect(qx,qy,qw,54);
   /* "A NOTE FOR DOCTOR" is not a thing anybody writes, so with no name the card is addressed
      to the reader instead — the line underneath still says "doctor" out loud. */
-  txt(named?drSub('A NOTE FOR {DR}'):'A NOTE FOR YOU',qx+34,qy+38,
-      {size:19,weight:800,col:'#FFF6E6',ls:'5px',font:F_MONO,max:qw-68});
-  const LN=52, top=qy+140;
-  quote.forEach((l,i)=>
-    txt(l,qx+34,top+i*LN,
-        {size:26,weight:800,col:CFG.col.ink,ls:'2px',font:F_MONO,max:qw-68}));
+  gwLogo(qx+32,qy+27,15);
+  txt(named?drSub('A NOTE FOR {DR}'):'A NOTE FOR YOU',qx+62,qy+38,
+      {size:19,weight:800,col:'#FFF6E6',ls:'5px',font:F_MONO,max:qw-96});
+  txt('GLIDEWELL.IO',qx+qw-34,qy+38,
+      {size:15,weight:800,col:'rgba(255,255,255,0.72)',align:'right',ls:'3px',font:F_MONO});
+  /* The salutation and the compliment are the screen. Everything between them is why. */
+  txt(drSub(note.hail),qx+34,qy+196,
+      {size:96,weight:800,col:CFG.col.ink,ls:'2px',max:qw-68});
+  note.body.forEach((l,i)=>
+    txt(l,qx+34,qy+272+i*40,
+        {size:24,weight:800,col:'rgba(30,30,30,0.86)',ls:'2px',font:F_MONO,max:qw-68}));
+  txt(drSub(note.praise),qx+34,qy+452,
+      {size:96,weight:800,col:CFG.col.red,ls:'2px',max:qw-68});
   rule(qx+34,qy+cardH-96,qx+qw-34,'rgba(110,106,96,0.5)',2);
   txt(name+',  '+PT.age+'  ·  PATIENT, THIS SHIFT',qx+34,qy+cardH-52,
       {size:17,weight:700,col:'rgba(110,106,96,0.95)',ls:'3px',font:F_MONO});
